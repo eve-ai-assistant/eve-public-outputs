@@ -1,310 +1,408 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>3D Flappy Bird</title>
-<style>
-    * { box-sizing: border-box; touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
-    body, html {
-        margin: 0; padding: 0; width: 100%; height: 100%; position: fixed; overflow: hidden;
-        background: linear-gradient(180deg, #4A90E2 0%, #A0E0FF 100%); font-family: -apple-system, sans-serif;
-    }
-    #game-canvas { position: absolute; inset: 0; z-index: 1; }
-    
-    .glass {
-        background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-        color: white; text-align: center; text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    }
-    
-    #ui { position: absolute; inset: 0; z-index: 20; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
-    #score { margin-top: 10vh; padding: 10px 40px; font-size: 52px; font-weight: 900; display: none; transition: transform 0.1s; pointer-events: auto; }
-    #menu { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 35px 25px; width: 85%; max-width: 320px; pointer-events: auto; }
-    h1 { margin: 0 0 10px; font-size: 38px; letter-spacing: 2px; }
-    p { margin: 0 0 20px; font-size: 18px; font-weight: bold; }
-    
-    button {
-        background: rgba(46, 204, 113, 0.9); border: 2px solid rgba(255,255,255,0.6); border-radius: 16px; padding: 16px;
-        width: 100%; color: white; font-size: 22px; font-weight: 900; cursor: pointer; transition: 0.1s; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-    }
-    button:active { transform: scale(0.95); }
-    
-    #controls { position: absolute; inset: 0; z-index: 10; display: flex; pointer-events: none; }
-    #left-zone, #right-zone { flex: 1; pointer-events: auto; position: relative; }
-    
-    #joy-base { position: absolute; width: 120px; height: 120px; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 15; }
-    #joy-stick { position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; background: rgba(255,255,255,0.9); border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-    #jump-btn { position: absolute; bottom: 12%; right: 12%; width: 85px; height: 85px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 16px; font-weight: 900; pointer-events: none; transition: 0.1s; background: rgba(255,255,255,0.2); }
-    
-    @media (orientation: landscape) {
-        #ui::before { content: "Please rotate to portrait mode"; position: absolute; inset: 0; background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; font-size: 22px; font-weight: bold; color: white; z-index: 100; pointer-events: auto; text-align: center; padding: 20px;}
-        #menu, #score, #controls, #joy-base { display: none !important; }
-    }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>3D Flappy Bird</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            touch-action: none; /* Prevents unwanted browser gestures */
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #87CEEB;
+        }
+        #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* Glassmorphism UI Elements */
+        .glass {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+            border-radius: 20px; color: #fff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        #ui-layer { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            z-index: 10; pointer-events: none; 
+            display: flex; justify-content: center; align-items: center; flex-direction: column; 
+        }
+        
+        #start-screen { 
+            padding: 35px 25px; text-align: center; pointer-events: auto; 
+            width: 320px; max-width: 90%; display: flex; flex-direction: column; gap: 8px;
+        }
+        #start-screen h1 { margin: 0 0 15px 0; font-size: 42px; text-transform: uppercase; letter-spacing: 2px;}
+        #start-screen p { margin: 5px 0; font-size: 22px; font-weight: bold; }
+        
+        .btn { 
+            margin-top: 15px; padding: 18px; font-size: 24px; font-weight: 900; cursor: pointer;
+            background: rgba(255,255,255,0.25); border: 2px solid rgba(255,255,255,0.6); 
+            border-radius: 15px; color: white; transition: transform 0.1s; outline: none;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .btn:active { background: rgba(255,255,255,0.4); transform: scale(0.95); }
+        
+        .instructions { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; margin: 15px 10px 0; opacity: 0.9;}
+        
+        #hud { 
+            position: absolute; top: 40px; left: 50%; transform: translateX(-50%); 
+            padding: 10px 40px; font-size: 45px; font-weight: 900; 
+            display: none; pointer-events: none; z-index: 5; border-radius: 20px;
+        }
+
+        /* Virtual Mobile Controls */
+        #controls { position: absolute; bottom: 0; left: 0; width: 100%; height: 50%; z-index: 20; pointer-events: none; }
+        #joystick-zone {
+            position: absolute; bottom: 40px; left: 20px; width: 120px; height: 120px;
+            background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%;
+            pointer-events: auto; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+        }
+        #joystick-knob {
+            position: absolute; top: 30px; left: 30px; width: 60px; height: 60px;
+            background: rgba(255,255,255,0.85); border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            pointer-events: none; transform: translate(0px, 0px);
+        }
+        #jump-btn {
+            position: absolute; bottom: 40px; right: 20px; width: 120px; height: 120px;
+            background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5); border-radius: 50%;
+            color: white; font-weight: 900; font-size: 24px; display: flex; justify-content: center; align-items: center;
+            pointer-events: auto; text-shadow: 0 2px 4px rgba(0,0,0,0.5); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+            cursor: pointer;
+        }
+        #jump-btn:active { background: rgba(255,255,255,0.4); transform: scale(0.95); }
+
+        /* Lock to Vertical Mode */
+        #portrait-lock { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #111; color: #fff; z-index: 9999; justify-content: center; align-items: center; text-align: center; font-size: 24px; font-weight: bold; }
+        @media (orientation: landscape) and (max-height: 500px) { #portrait-lock { display: flex; } }
+    </style>
 </head>
 <body>
 
-<div id="game-canvas"></div>
+<div id="portrait-lock">Please rotate device<br>to Portrait Mode</div>
+<div id="game-container"></div>
 
-<div id="ui">
-    <div id="score" class="glass">0</div>
-    <div id="menu" class="glass">
-        <h1 id="title">3D FLAPPY</h1>
+<div id="ui-layer">
+    <div id="start-screen" class="glass">
+        <h1>3D Flappy</h1>
+        <p>Score: <span id="final-score">0</span></p>
         <p>Best: <span id="high-score">0</span></p>
-        <p style="font-size: 14px; opacity: 0.9; margin-bottom: 25px;">👈 Steer X/Z &nbsp;|&nbsp; Jump Y 👉</p>
-        <button id="start-btn">PLAY NOW</button>
+        <div class="instructions">
+            <span>👈 Steer</span>
+            <span>Jump 👉</span>
+        </div>
+        <button id="start-btn" class="btn">FLY</button>
     </div>
 </div>
+<div id="hud" class="glass">0</div>
 
 <div id="controls">
-    <div id="left-zone"></div>
-    <div id="right-zone"><div id="jump-btn" class="glass">JUMP</div></div>
+    <div id="joystick-zone"><div id="joystick-knob"></div></div>
+    <div id="jump-btn">JUMP</div>
 </div>
-<div id="joy-base" class="glass"><div id="joy-stick"></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-    // --- State & Storage ---
-    let state = 'menu', score = 0, speed = 18, velY = 0;
-    let highScore = 0;
-    try { highScore = localStorage.getItem('3dflappy_hs') || 0; } catch(e){}
+    // Native gesture override (prevents scrolling/bouncing securely)
+    document.addEventListener('touchmove', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+
+    // --- 1. GAME STATE & SETTINGS ---
+    let gameState = 'START'; 
+    let score = 0, highScore = 0;
+    try { highScore = localStorage.getItem('flappy3d_highscore') || 0; } catch (e) {}
     document.getElementById('high-score').innerText = highScore;
 
-    // --- Three.js Setup ---
+    let birdY = 7, birdX = 0, birdVelocityY = 0;
+    const gravity = -50, jumpStrength = 16, gameSpeed = 22;
+    const birdRadius = 0.4, pipeRadius = 1.75, gapH = 4.8, roofY = 16;
+    let joyX = 0; // Axis: -1 to 1
+
+    // --- 2. THREE.JS ENVIRONMENT SETUP ---
+    const container = document.getElementById('game-container');
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0xA0E0FF, 0.012);
 
-    const camera = new THREE.PerspectiveCamera(65, window.innerWidth/window.innerHeight, 0.1, 150);
-    camera.position.set(0, 4, 13);
-    camera.lookAt(0, 2, 0);
+    // Procedural Sky Gradient Background
+    const bgCanvas = document.createElement('canvas');
+    bgCanvas.width = 2; bgCanvas.height = 512;
+    const bgCtx = bgCanvas.getContext('2d');
+    const grad = bgCtx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, '#1a82f7'); grad.addColorStop(1, '#e0f6ff');
+    bgCtx.fillStyle = grad; bgCtx.fillRect(0, 0, 2, 512);
+    scene.background = new THREE.CanvasTexture(bgCanvas);
+    scene.fog = new THREE.Fog('#e0f6ff', 20, 70);
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 8, 14);
+    camera.lookAt(0, 5, -10);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    document.getElementById('game-canvas').appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
 
-    // --- Lights ---
-    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
-    dirLight.position.set(10, 25, 15);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(10, 25, 10);
     dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 1024; dirLight.shadow.mapSize.height = 1024;
     dirLight.shadow.camera.left = -25; dirLight.shadow.camera.right = 25;
-    dirLight.shadow.camera.top = 25; dirLight.shadow.camera.bottom = -30;
+    dirLight.shadow.camera.top = 25; dirLight.shadow.camera.bottom = -25;
+    dirLight.shadow.mapSize.width = 1024; dirLight.shadow.mapSize.height = 1024;
     scene.add(dirLight);
 
-    // --- Ground ---
-    const cvs = document.createElement('canvas');
-    cvs.width = 256; cvs.height = 256;
-    const ctx = cvs.getContext('2d');
-    ctx.fillStyle = '#6ab04c'; ctx.fillRect(0,0,256,256);
-    ctx.fillStyle = '#badc58';
-    for(let i=0; i<4; i++) for(let j=0; j<4; j++) if((i+j)%2 === 0) ctx.fillRect(i*64, j*64, 64, 64);
-    
-    const groundTex = new THREE.CanvasTexture(cvs);
-    groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
-    groundTex.repeat.set(25, 50);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(150, 300), new THREE.MeshLambertMaterial({ map: groundTex }));
-    ground.rotation.x = -Math.PI/2; ground.position.y = -1; ground.receiveShadow = true;
+    // --- 3. SCROLLING GROUND ---
+    const groundCanvas = document.createElement('canvas');
+    groundCanvas.width = 512; groundCanvas.height = 512;
+    const gCtx = groundCanvas.getContext('2d');
+    gCtx.fillStyle = '#558B2F'; gCtx.fillRect(0, 0, 512, 512);
+    gCtx.fillStyle = '#659D32';
+    for(let i=0; i<512; i+=64) {
+        for(let j=0; j<512; j+=64) { if(((i/64)+(j/64)) % 2 === 0) gCtx.fillRect(i, j, 64, 64); }
+    }
+    const groundTex = new THREE.CanvasTexture(groundCanvas);
+    groundTex.wrapS = THREE.RepeatWrapping; groundTex.wrapT = THREE.RepeatWrapping;
+    groundTex.repeat.set(15, 30);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 200), new THREE.MeshLambertMaterial({ map: groundTex }));
+    ground.rotation.x = -Math.PI / 2; ground.position.y = 0; ground.receiveShadow = true;
     scene.add(ground);
 
-    // --- Bird ---
+    // --- 4. BIRD ENTITY ---
     const bird = new THREE.Group();
-    const bodyMat = new THREE.MeshPhongMaterial({ color: 0xFFD700, shininess: 40 });
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), bodyMat);
+    const body = new THREE.Mesh(new THREE.SphereGeometry(birdRadius, 32, 32), new THREE.MeshLambertMaterial({ color: 0xFFD700 }));
     body.castShadow = true; bird.add(body);
-
-    const wingMat = new THREE.MeshPhongMaterial({ color: 0xFFB300, shininess: 40, side: THREE.DoubleSide });
-    const wingGeo = new THREE.PlaneGeometry(0.8, 0.5);
     
-    const wingL = new THREE.Group(); wingL.position.set(-0.4, 0, 0);
-    const wLMesh = new THREE.Mesh(wingGeo, wingMat); wLMesh.position.set(-0.4, 0, 0); wLMesh.rotation.x = Math.PI/2;
-    wLMesh.castShadow = true; wingL.add(wLMesh); bird.add(wingL);
+    const wingMat = new THREE.MeshLambertMaterial({ color: 0xFFA500, side: THREE.DoubleSide });
+    const wingL = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.5), wingMat);
+    wingL.position.set(-0.45, 0, 0); wingL.rotation.x = Math.PI / 2; bird.add(wingL);
+    const wingR = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.5), wingMat);
+    wingR.position.set(0.45, 0, 0); wingR.rotation.x = Math.PI / 2; bird.add(wingR);
 
-    const wingR = new THREE.Group(); wingR.position.set(0.4, 0, 0);
-    const wRMesh = new THREE.Mesh(wingGeo, wingMat); wRMesh.position.set(0.4, 0, 0); wRMesh.rotation.x = Math.PI/2;
-    wRMesh.castShadow = true; wingR.add(wRMesh); bird.add(wingR);
-
-    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 16), new THREE.MeshPhongMaterial({ color: 0xFF8C00 }));
-    beak.rotation.x = -Math.PI/2; beak.position.set(0, -0.05, -0.6); beak.castShadow = true; bird.add(beak);
-
-    const eyeM = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const pupM = new THREE.MeshBasicMaterial({ color: 0x000000 });
-    const eL = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), eyeM); eL.position.set(-0.2, 0.25, -0.4);
-    const pL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), pupM); pL.position.set(0, 0, -0.08); eL.add(pL); bird.add(eL);
-    const eR = eL.clone(); eR.position.set(0.2, 0.25, -0.4); bird.add(eR);
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 16), new THREE.MeshLambertMaterial({ color: 0xFF4500 }));
+    beak.position.set(0, 0, -0.45); beak.rotation.x = -Math.PI / 2; bird.add(beak);
     scene.add(bird);
 
-    // --- Pipes (InstancedMesh Wall System) ---
-    const pipeCount = 8;
-    const gapSize = 5.5;
-    const pMat = new THREE.MeshPhongMaterial({ color: 0x2ECC71, shininess: 25 });
-    const cMat = new THREE.MeshPhongMaterial({ color: 0x1E8449, shininess: 25 });
-    
-    // We generate 3 pipe columns per obstacle to form a wall. Only one column has a gap.
-    const pipes = new THREE.InstancedMesh(new THREE.CylinderGeometry(1.8, 1.8, 30, 20), pMat, pipeCount * 6);
-    const caps = new THREE.InstancedMesh(new THREE.CylinderGeometry(2.0, 2.0, 1.5, 20), cMat, pipeCount * 6);
-    pipes.castShadow = true; pipes.receiveShadow = true; caps.castShadow = true; caps.receiveShadow = true;
-    scene.add(pipes); scene.add(caps);
+    // --- 5. PIPES (INSTANCED MESH SYSTEM) ---
+    const cols = [-3.5, 0, 3.5]; // 3 Interactive Lanes (touching precisely to form solid walls)
+    const waveCount = 6;
+    const numPipes = waveCount * cols.length * 2; 
 
-    let pipeData = [];
-    const dummy = new THREE.Object3D();
+    const pipeBodyGeo = new THREE.CylinderGeometry(pipeRadius, pipeRadius, 1, 32);
+    pipeBodyGeo.translate(0, 0.5, 0); // Origin firmly situated at base
+    const pipeCapGeo = new THREE.CylinderGeometry(pipeRadius + 0.15, pipeRadius + 0.15, 0.8, 32);
 
-    function updatePipes() {
-        let idx = 0;
-        for(let i=0; i<pipeCount; i++) {
-            let p = pipeData[i];
-            for(let j=-1; j<=1; j++) {
-                let px = j * 3.8;
-                if (j === p.gapCol) {
-                    // Column with the passable gap
-                    dummy.scale.set(1, 1, 1);
-                    dummy.position.set(px, p.gapY - gapSize/2 - 15, p.z);
-                    dummy.updateMatrix(); pipes.setMatrixAt(idx, dummy.matrix);
-                    dummy.position.set(px, p.gapY - gapSize/2 - 0.75, p.z);
-                    dummy.updateMatrix(); caps.setMatrixAt(idx, dummy.matrix);
-                    
-                    dummy.position.set(px, p.gapY + gapSize/2 + 15, p.z);
-                    dummy.updateMatrix(); pipes.setMatrixAt(idx+1, dummy.matrix);
-                    dummy.position.set(px, p.gapY + gapSize/2 + 0.75, p.z);
-                    dummy.updateMatrix(); caps.setMatrixAt(idx+1, dummy.matrix);
-                } else {
-                    // Solid pillar column blocking the way
-                    dummy.scale.set(1, 1.5, 1);
-                    dummy.position.set(px, 10, p.z);
-                    dummy.updateMatrix(); pipes.setMatrixAt(idx, dummy.matrix);
-                    dummy.scale.set(0, 0, 0); dummy.updateMatrix(); caps.setMatrixAt(idx, dummy.matrix);
-                    dummy.scale.set(0, 0, 0); dummy.updateMatrix(); pipes.setMatrixAt(idx+1, dummy.matrix); caps.setMatrixAt(idx+1, dummy.matrix);
-                }
-                idx += 2;
-            }
-        }
-        pipes.instanceMatrix.needsUpdate = true; caps.instanceMatrix.needsUpdate = true;
+    const pipesMesh = new THREE.InstancedMesh(pipeBodyGeo, new THREE.MeshLambertMaterial({ color: 0x2ecc71 }), numPipes);
+    const capsMesh = new THREE.InstancedMesh(pipeCapGeo, new THREE.MeshLambertMaterial({ color: 0x1e8449 }), numPipes);
+    pipesMesh.castShadow = true; pipesMesh.receiveShadow = true;
+    scene.add(pipesMesh); scene.add(capsMesh);
+
+    const waves = [];
+    for (let i = 0; i < waveCount; i++) {
+        waves.push({ z: -30 - i * 18, gapCol: Math.floor(Math.random() * 3), gapY: 4.5 + Math.random() * 6, passed: false });
     }
 
-    // --- Inputs & Controls ---
-    let joyActive = false, joyId = null, joyOrig = {x:0, y:0}, joyVal = {x:0, y:0};
-    const lZone = document.getElementById('left-zone'), rZone = document.getElementById('right-zone');
-    const jBase = document.getElementById('joy-base'), jStick = document.getElementById('joy-stick'), jumpBtn = document.getElementById('jump-btn');
+    const dummy = new THREE.Object3D(), capDummy = new THREE.Object3D();
 
-    lZone.addEventListener('pointerdown', e => {
-        if(state !== 'play') return;
-        joyActive = true; joyId = e.pointerId; joyOrig = { x: e.clientX, y: e.clientY };
-        jBase.style.opacity = '1'; jBase.style.left = e.clientX + 'px'; jBase.style.top = e.clientY + 'px';
-        jStick.style.transform = `translate(-50%, -50%)`; joyVal = { x: 0, y: 0 }; lZone.setPointerCapture(joyId);
+    function updatePipesMatrix() {
+        let idx = 0;
+        waves.forEach(w => {
+            cols.forEach((cx, colIdx) => {
+                if (colIdx === w.gapCol) {
+                    // Gap Lane: Generate the Bottom Pipe + Top Pipe + Decorative Dark Caps
+                    const bottomHeight = w.gapY - gapH / 2;
+                    dummy.position.set(cx, 0, w.z); dummy.scale.set(1, bottomHeight, 1);
+                    dummy.updateMatrix(); pipesMesh.setMatrixAt(idx, dummy.matrix);
+                    capDummy.position.set(cx, bottomHeight - 0.4, w.z); capDummy.scale.set(1, 1, 1);
+                    capDummy.updateMatrix(); capsMesh.setMatrixAt(idx, capDummy.matrix);
+                    idx++;
+
+                    const topHeight = roofY - (w.gapY + gapH / 2);
+                    dummy.position.set(cx, w.gapY + gapH / 2, w.z); dummy.scale.set(1, topHeight, 1);
+                    dummy.updateMatrix(); pipesMesh.setMatrixAt(idx, dummy.matrix);
+                    capDummy.position.set(cx, w.gapY + gapH / 2 + 0.4, w.z); capDummy.scale.set(1, 1, 1);
+                    capDummy.updateMatrix(); capsMesh.setMatrixAt(idx, capDummy.matrix);
+                    idx++;
+                } else {
+                    // Solid Blocking Pillar (Recycles unneeded pipe/cap instances out of view)
+                    dummy.position.set(cx, 0, w.z); dummy.scale.set(1, roofY, 1);
+                    dummy.updateMatrix(); pipesMesh.setMatrixAt(idx, dummy.matrix);
+                    capDummy.position.set(cx, -50, w.z); capDummy.scale.set(1, 0.1, 1); 
+                    capDummy.updateMatrix(); capsMesh.setMatrixAt(idx, capDummy.matrix);
+                    idx++;
+
+                    dummy.position.set(cx, -50, w.z); dummy.scale.set(1, 0.1, 1); dummy.updateMatrix(); 
+                    pipesMesh.setMatrixAt(idx, dummy.matrix); capsMesh.setMatrixAt(idx, capDummy.matrix); 
+                    idx++;
+                }
+            });
+        });
+        pipesMesh.instanceMatrix.needsUpdate = true;
+        capsMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    // --- 6. CONTROLS (POINTER EVENTS API) ---
+    const joyZone = document.getElementById('joystick-zone'), joyKnob = document.getElementById('joystick-knob');
+    let pointerId = null;
+
+    joyZone.addEventListener('pointerdown', e => {
+        if (pointerId !== null) return;
+        pointerId = e.pointerId; joyZone.setPointerCapture(pointerId);
+        updateJoystick(e);
     });
-
-    lZone.addEventListener('pointermove', e => {
-        if(!joyActive || e.pointerId !== joyId) return;
-        let dx = e.clientX - joyOrig.x, dy = e.clientY - joyOrig.y, max = 45, dist = Math.hypot(dx, dy);
-        if(dist > max) { dx = (dx/dist)*max; dy = (dy/dist)*max; }
-        jStick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-        joyVal = { x: dx/max, y: dy/max };
-    });
-
-    const resetJoy = e => { if(e?.pointerId === joyId || !e) { joyActive = false; joyId = null; joyVal = {x:0, y:0}; jBase.style.opacity = '0'; }};
-    lZone.addEventListener('pointerup', resetJoy); lZone.addEventListener('pointercancel', resetJoy);
-
-    rZone.addEventListener('pointerdown', () => {
-        if(state === 'play') {
-            velY = 16; jumpBtn.style.transform = 'scale(0.85)'; jumpBtn.style.background = 'rgba(255,255,255,0.45)';
+    joyZone.addEventListener('pointermove', e => { if (pointerId === e.pointerId) updateJoystick(e); });
+    
+    const resetJoystick = (e) => {
+        if (pointerId === e.pointerId) {
+            pointerId = null; joyX = 0; joyKnob.style.transform = `translate(0px, 0px)`;
         }
+    };
+    joyZone.addEventListener('pointerup', resetJoystick);
+    joyZone.addEventListener('pointercancel', resetJoystick);
+
+    function updateJoystick(e) {
+        const rect = joyZone.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2, centerY = rect.top + rect.height / 2;
+        let dx = e.clientX - centerX, dy = e.clientY - centerY;
+        const maxRadius = rect.width / 2 - 30; 
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > maxRadius) { dx = (dx / dist) * maxRadius; dy = (dy / dist) * maxRadius; }
+        joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+        joyX = dx / maxRadius; // Sets bird's X-axis strafe velocity 
+    }
+
+    document.getElementById('jump-btn').addEventListener('pointerdown', e => {
+        e.preventDefault(); // Halt delayed click processing
+        if (gameState === 'PLAYING') birdVelocityY = jumpStrength;
     });
-    const resetJump = () => { jumpBtn.style.transform = 'none'; jumpBtn.style.background = 'rgba(255,255,255,0.2)'; };
-    rZone.addEventListener('pointerup', resetJump); rZone.addEventListener('pointercancel', resetJump);
 
-    // --- Game Logic ---
-    const gravity = -50;
-    const clock = new THREE.Clock();
-    let wingTime = 0;
-
-    document.getElementById('start-btn').addEventListener('click', e => {
-        e.stopPropagation(); state = 'play'; score = 0; speed = 18; velY = 12;
-        document.getElementById('score').innerText = score;
-        document.getElementById('menu').style.display = 'none';
-        document.getElementById('score').style.display = 'block';
-        bird.position.set(0, 5, 0); bird.rotation.set(0, 0, 0); resetJoy();
+    document.getElementById('start-btn').addEventListener('pointerdown', e => {
+        e.preventDefault();
+        birdY = 7; birdX = 0; birdVelocityY = 0; score = 0;
+        bird.rotation.set(0, 0, 0); 
+        document.getElementById('hud').innerText = score;
+        document.getElementById('ui-layer').style.display = 'none';
+        document.getElementById('hud').style.display = 'block';
         
-        pipeData = [];
-        for(let i=0; i<pipeCount; i++) pipeData.push({ z: -25 - i*20, gapCol: Math.floor(Math.random()*3)-1, gapY: Math.random()*6 + 3, passed: false });
-        updatePipes();
+        waves.forEach((w, i) => {
+            w.z = -30 - i * 18; w.gapCol = Math.floor(Math.random() * 3);
+            w.gapY = 4.5 + Math.random() * 6; w.passed = false;
+        });
+        updatePipesMatrix(); gameState = 'PLAYING';
     });
 
     function gameOver() {
-        if(state === 'gameover') return; state = 'gameover';
-        if(score > highScore) { highScore = score; try{ localStorage.setItem('3dflappy_hs', highScore); }catch(e){} document.getElementById('high-score').innerText = highScore; }
-        document.getElementById('title').innerText = 'CRASHED!'; document.getElementById('start-btn').innerText = 'RETRY';
-        document.getElementById('menu').style.display = 'block'; document.getElementById('score').style.display = 'none'; resetJoy();
+        gameState = 'GAMEOVER';
+        document.getElementById('ui-layer').style.display = 'flex';
+        document.getElementById('hud').style.display = 'none';
+        document.getElementById('final-score').innerText = score;
+        pointerId = null; joyX = 0; joyKnob.style.transform = `translate(0px, 0px)`;
+        
+        if (score > highScore) {
+            highScore = score;
+            try { localStorage.setItem('flappy3d_highscore', highScore); } catch (e) {}
+            document.getElementById('high-score').innerText = highScore;
+        }
     }
+
+    // --- 7. RENDER LOOP & PHYSICS ENGINE ---
+    const clock = new THREE.Clock();
 
     function animate() {
         requestAnimationFrame(animate);
-        let dt = Math.min(clock.getDelta(), 0.1), time = clock.getElapsedTime();
+        const delta = Math.min(clock.getDelta(), 0.1);
+        const time = clock.getElapsedTime();
 
-        if (state === 'play') {
-            velY += gravity * dt; bird.position.y += velY * dt;
-            
-            // Apply Joystick X/Z translations smoothly
-            let targetX = joyVal.x * 4.5, targetZ = joyVal.y * 3;
-            bird.position.x += (targetX - bird.position.x) * 10 * dt;
-            bird.position.z += (targetZ - bird.position.z) * 10 * dt;
-            
-            bird.rotation.z = (bird.position.x - targetX) * 0.15;
-            bird.rotation.x = Math.max(-Math.PI/4, Math.min(Math.PI/4, velY * 0.05));
-            
-            wingTime += dt * (velY > 0 ? 30 : 10);
-            wingL.rotation.z = -Math.sin(wingTime) * 0.6; wingR.rotation.z = Math.sin(wingTime) * 0.6;
-            
-            groundTex.offset.y -= (speed / 100) * dt; speed += 0.2 * dt;
-            
-            let moved = false;
-            for(let i=0; i<pipeCount; i++) {
-                let p = pipeData[i]; p.z += speed * dt; moved = true;
-                
-                // Score
-                if(!p.passed && p.z > bird.position.z) {
-                    p.passed = true; score++;
-                    const sb = document.getElementById('score'); sb.innerText = score;
-                    sb.style.transform = 'scale(1.25)'; setTimeout(() => sb.style.transform = 'none', 100);
-                }
-                
-                // Advanced Collision (Wall columns & Gap)
-                if (Math.abs(p.z - bird.position.z) < 2.2) {
-                    let bX = bird.position.x;
-                    let safeDistX = Math.abs(bX - (p.gapCol * 3.8));
-                    
-                    if (safeDistX > 1.4) gameOver(); // Smashed into a solid pillar column
-                    else if (bird.position.y + 0.4 > p.gapY + gapSize/2 || bird.position.y - 0.4 < p.gapY - gapSize/2) gameOver(); // Hit gap edges
-                }
-                
-                // Recycle
-                if(p.z > 20) {
-                    let minZ = p.z; for(let j=0; j<pipeCount; j++) if(pipeData[j].z < minZ) minZ = pipeData[j].z;
-                    p.z = minZ - 20; p.gapCol = Math.floor(Math.random()*3)-1; p.gapY = Math.random()*6 + 3; p.passed = false;
-                }
-            }
-            if(moved) updatePipes();
-            if(bird.position.y < -0.5 || bird.position.y > 15) gameOver();
+        if (gameState === 'PLAYING') {
+            // Core Game Mechanics
+            birdVelocityY += gravity * delta;
+            birdY += birdVelocityY * delta;
+            birdX += joyX * 18 * delta;
+            birdX = Math.max(-3.5, Math.min(3.5, birdX)); // Constrain player to columns mathematically
 
-        } else {
-            // Main menu idle
-            bird.position.y = 5 + Math.sin(time * 3) * 0.5; bird.rotation.set(0, 0, 0);
-            wingL.rotation.z = -Math.sin(time * 15) * 0.3; wingR.rotation.z = Math.sin(time * 15) * 0.3;
-            groundTex.offset.y -= (10 / 100) * dt;
+            if (birdY < birdRadius) { birdY = birdRadius; gameOver(); }
+            if (birdY > roofY) { birdY = roofY; birdVelocityY = 0; }
+
+            // Dynamic Bird Rotations & Flapping
+            bird.position.set(birdX, birdY, 0);
+            bird.rotation.z = -joyX * 0.4;
+            bird.rotation.x = birdVelocityY * 0.04;
+            const wingFlap = Math.sin(time * 20) * 0.6;
+            wingL.rotation.y = -wingFlap; wingR.rotation.y = wingFlap;
+
+            groundTex.offset.y += gameSpeed * 0.05 * delta;
+
+            let hit = false;
+            waves.forEach(w => {
+                w.z += gameSpeed * delta;
+
+                // Cylinder Math Collision Detection Strategy 
+                if (w.z > -(pipeRadius + birdRadius) && w.z < (pipeRadius + birdRadius)) {
+                    cols.forEach((cx, colIdx) => {
+                        const isGap = (colIdx === w.gapCol);
+                        const dx = birdX - cx, dz = 0 - w.z;
+                        if (dx*dx + dz*dz < (birdRadius + pipeRadius)*(birdRadius + pipeRadius)) {
+                            if (!isGap || birdY + birdRadius > w.gapY + gapH / 2 || birdY - birdRadius < w.gapY - gapH / 2) hit = true;
+                        }
+                    });
+                }
+
+                // Points Handling
+                if (w.z > pipeRadius && !w.passed) {
+                    w.passed = true; score++;
+                    document.getElementById('hud').innerText = score;
+                }
+
+                // Endless Array Recycling
+                if (w.z > 16) {
+                    w.z -= waveCount * 18;
+                    w.gapCol = Math.floor(Math.random() * 3);
+                    w.gapY = 4.5 + Math.random() * 6; w.passed = false;
+                }
+            });
             
-            if (state === 'gameover' && bird.position.y > -0.5) {
-                velY += gravity * dt; bird.position.y += velY * dt;
-                bird.rotation.x -= 3 * dt; bird.rotation.z += 2 * dt;
-            } else if (state === 'gameover') { bird.position.y = -0.5; }
+            if (hit) gameOver();
+            updatePipesMatrix();
+
+            // Active Smoothing Camera Tracking
+            camera.position.x += (birdX * 0.3 - camera.position.x) * 5 * delta;
+            camera.lookAt(birdX * 0.2, 5, -10);
+
+        } else if (gameState === 'START') {
+            // Initial Hovering 
+            bird.position.set(0, 7 + Math.sin(time * 3) * 0.5, 0);
+            bird.rotation.set(0, 0, 0);
+            wingL.rotation.y = -Math.sin(time * 5) * 0.3; wingR.rotation.y = Math.sin(time * 5) * 0.3;
+            groundTex.offset.y += gameSpeed * 0.05 * delta;
+            
+        } else if (gameState === 'GAMEOVER') {
+            // Lethal Plunge
+            birdVelocityY += gravity * delta;
+            birdY += birdVelocityY * delta;
+            if (birdY < birdRadius) { birdY = birdRadius; birdVelocityY = 0; }
+            bird.position.set(birdX, birdY, 0);
+            bird.rotation.x -= 5 * delta; 
+            bird.rotation.y -= 3 * delta;
         }
+
         renderer.render(scene, camera);
     }
-    
-    window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
-    for(let i=0; i<pipeCount; i++) pipeData.push({ z: 100, gapCol: 0, gapY: 0, passed: true });
+
+    // Auto-adjust layout on resize
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    updatePipesMatrix();
     animate();
 </script>
 </body>
