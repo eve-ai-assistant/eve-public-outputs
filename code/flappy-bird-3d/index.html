@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>3D Flappy Bird</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#87CEEB;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;width:100vw;height:100vh}
+#ui-overlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
+#score-display{position:absolute;top:max(4%,env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:min(12vw,72px);font-weight:900;color:#fff;text-shadow:2px 2px 0 #000,-1px -1px 0 #000,0 3px 6px rgba(0,0,0,.4);letter-spacing:-2px}
+#controls{position:absolute;bottom:max(3%,env(safe-area-inset-bottom));left:0;width:100%;height:min(35vh,200px);display:flex;justify-content:space-between;padding:0 min(4vw,20px);pointer-events:auto}
+#joystick-zone{width:min(45%,160px);height:min(45%,160px);background:rgba(255,255,255,.15);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:50%;border:2px solid rgba(255,255,255,.3);position:relative}
+#joystick-knob{width:min(40%,140px);height:min(40%,140px);background:rgba(255,255,255,.35);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border-radius:50%;border:2px solid rgba(255,255,255,.5);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);transition:none}
+#jump-btn{width:min(45%,160px);height:min(45%,160px);background:rgba(255,200,0,.3);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:50%;border:2px solid rgba(255,200,0,.6);display:flex;align-items:center;justify-content:center;font-size:min(10vw,48px);color:#fff;text-shadow:1px 1px 3px rgba(0,0,0,.5)}
+#jump-btn:active{background:rgba(255,200,0,.6)}
+#game-over{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:auto;display:none}
+#game-over-box{background:rgba(255,255,255,.2);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:min(4vw,24px);padding:min(8vw,40px) min(6vw,30px);border:1px solid rgba(255,255,255,.4);box-shadow:0 8px 32px rgba(0,0,0,.2)}
+#game-over h2{font-size:min(8vw,36px);color:#fff;text-shadow:2px 2px 0 #000;margin-bottom:10px}
+#final-score,#high-score-display{font-size:min(5vw,24px);color:#FFD700;text-shadow:1px 1px 0 #000;margin:6px 0;font-weight:700}
+#restart-btn{margin-top:20px;padding:min(3vw,16px) min(8vw,40px);font-size:min(5vw,22px);background:rgba(255,255,255,.25);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:30px;border:2px solid rgba(255,255,255,.5);color:#fff;cursor:pointer;font-weight:700;text-shadow:1px 1px 2px rgba(0,0,0,.3)}
+#restart-btn:hover{background:rgba(255,255,255,.4)}
+#start-screen{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:auto}
+#start-box{background:rgba(255,255,255,.2);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:min(4vw,24px);padding:min(8vw,40px) min(6vw,30px);border:1px solid rgba(255,255,255,.4)}
+#start-box h1{font-size:min(9vw,42px);color:#fff;text-shadow:2px 2px 0 #000;margin-bottom:8px}
+#start-box p{font-size:min(4vw,18px);color:rgba(255,255,255,.8);text-shadow:1px 1px 0 rgba(0,0,0,.3)}
+#high-score-top{position:absolute;top:max(2%,env(safe-area-inset-top));right:min(4vw,20px);font-size:min(4vw,18px);color:#FFD700;text-shadow:1px 1px 0 #000;font-weight:700}
+</style>
+</head>
+<body>
+<div id="ui-overlay">
+<div id="score-display">0</div>
+<div id="high-score-top"></div>
+<div id="controls">
+<div id="joystick-zone"><div id="joystick-knob"></div></div>
+<div id="jump-btn">&#9650;</div>
+</div>
+<div id="game-over">
+<div id="game-over-box">
+<h2>Game Over!</h2>
+<div id="final-score"></div>
+<div id="high-score-display"></div>
+<button id="restart-btn">Play Again</button>
+</div>
+</div>
+<div id="start-screen">
+<div id="start-box">
+<h1>3D Flappy Bird</h1>
+<p>Tap or press Space to fly!</p>
+<button id="play-btn" style="margin-top:20px;padding:min(3vw,16px) min(8vw,40px);font-size:min(5vw,22px);background:rgba(255,255,255,.25);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:30px;border:2px solid rgba(255,255,255,.5);color:#fff;cursor:pointer;font-weight:700;text-shadow:1px 1px 2px rgba(0,0,0,.3)">▶ Play</button>
+</div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+const GRAVITY=0.5, JUMP_VEL=-9, PIPE_SPEED=3.5, PIPE_GAP=170, PIPE_SPACING=280, BIRD_RADIUS=16;
+
+let scene,camera,bird,birdWingL,birdWingR,groundMeshes=[],pipes=[];
+let score=0,highScore=parseInt(localStorage.getItem('flappy3d_hs'))||0;
+let gameState='start'; // start, playing, over
+let birdY=0,velocityY=0,birdRot=0;
+let pipeTimer=0,isJumping=false,wingAngle=0;
+
+const scoreEl=document.getElementById('score-display');
+const gameOverEl=document.getElementById('game-over');
+const finalScoreEl=document.getElementById('final-score');
+const highScoreDisplayEl=document.getElementById('high-score-display');
+const startScreen=document.getElementById('start-screen');
+const playBtn=document.getElementById('play-btn');
+const restartBtn=document.getElementById('restart-btn');
+const joystickZone=document.getElementById('joystick-zone');
+const joystickKnob=document.getElementById('joystick-knob');
+const jumpBtn=document.getElementById('jump-btn');
+
+function init(){
+  scene=new THREE.Scene();
+  const aspect=window.innerWidth/window.innerHeight;
+  camera=new THREE.PerspectiveCamera(60,aspect,1,2000);
+  camera.position.set(-80,-30,250);
+  camera.lookAt(0,0,0);
+
+  scene.add(new THREE.AmbientLight(0xffffff,0.7));
+  const sun=new THREE.DirectionalLight(0xffffee,0.9);
+  sun.position.set(-100,200,100);scene.add(sun);
+
+  createSky();createBird();createGround();setupControls();updateHighScoreDisplay();
+
+  playBtn.addEventListener('click',startGame);
+  restartBtn.addEventListener('click',resetGame);
+  window.addEventListener('resize',onResize);
+  onResize();
+  animate();
+}
+
+function createSky(){
+  const skyGeo=new THREE.PlaneGeometry(2000,1500);
+  const skyMat=new THREE.ShaderMaterial({
+    uniforms:{topColor:{value:new THREE.Color(0x1e3a8a)},bottomColor:{value:new THREE.Color(0xa7f3d0)}},
+    vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader:`uniform vec3 topColor;uniform vec3 bottomColor;varying vec2 vUv;void main(){float h=vUv.y;gl_FragColor=vec4(mix(bottomColor,topColor,h),1.);}`,
+    side:THREE.DoubleSide,depthWrite:false
+  });
+  const sky=new THREE.Mesh(skyGeo,skyMat);
+  sky.position.set(0,200,-600);scene.add(sky);
+
+  for(let i=0;i<8;i++){
+    const cGeo=new THREE.SphereGeometry(15+Math.random()*25,8,6);
+    const cMat=new THREE.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:0.7});
+    const cloud=new THREE.Mesh(cGeo,cMat);
+    cloud.position.set(Math.random()*600-300,-100-Math.random()*80,-200-Math.random()*300);
+    cloud.scale.set(2+Math.random(),0.6,1);scene.add(cloud);
+  }
+
+  const gGeo=new THREE.PlaneGeometry(2000,400);
+  const gMat=new THREE.ShaderMaterial({
+    uniforms:{topColor:{value:new THREE.Color(0x86efac)},bottomColor:{value:new THREE.Color(0x16a34a)}},
+    vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader:`uniform vec3 topColor;uniform vec3 bottomColor;varying vec2 vUv;void main(){float h=vUv.y;gl_FragColor=vec4(mix(bottomColor,topColor,h),1.);}`,
+    side:THREE.DoubleSide,depthWrite:false
+  });
+  const ground=new THREE.Mesh(gGeo,gMat);
+  ground.position.set(0,-350,-600);scene.add(ground);
+}
+
+function createBird(){
+  bird=new THREE.Group();
+  const bodyGeo=new THREE.SphereGeometry(BIRD_RADIUS,12,10);
+  const bodyMat=new THREE.MeshLambertMaterial({color:0xFFD700});
+  const body=new THREE.Mesh(bodyGeo,bodyMat);bird.add(body);
+
+  const eyeGeo=new THREE.SphereGeometry(4,8,6);const eyeMat=new THREE.MeshBasicMaterial({color:0xffffff});
+  const pupilGeo=new THREE.SphereGeometry(2.5,6,4);const pupilMat=new THREE.MeshBasicMaterial({color:0x111111});
+  [-1,1].forEach(s=>{
+    const eye=new THREE.Mesh(eyeGeo,eyeMat);eye.position.set(8,-3,s*7);bird.add(eye);
+    const pupil=new THREE.Mesh(pupilGeo,pupilMat);pupil.position.set(10,-3,s*7.5);bird.add(pupil);
+  });
+
+  const beakGeo=new THREE.ConeGeometry(4,10,6);const beakMat=new THREE.MeshLambertMaterial({color:0xff8c00});
+  const beak=new THREE.Mesh(beakGeo,beakMat);beak.rotation.z=-Math.PI/2;beak.position.set(16,-2,0);bird.add(beak);
+
+  birdWingL=new THREE.Mesh(new THREE.PlaneGeometry(20,12),new THREE.MeshLambertMaterial({color:0xFFC107,side:THREE.DoubleSide}));
+  birdWingL.position.set(-4,-4,12);bird.add(birdWingL);
+  birdWingR=new THREE.Mesh(new THREE.PlaneGeometry(20,12),new THREE.MeshLambertMaterial({color:0xFFC107,side:THREE.DoubleSide}));
+  birdWingR.position.set(-4,-4,-12);bird.add(birdWingR);
+
+  scene.add(bird);
+  resetBird();
+}
+
+function createPipe(x){
+  const gTop=PIPE_GAP/2,gBot=-30;
+  const h=(gTop-gBot)/2+50;
+  const pipeGroup=new THREE.Group();
+  const capGeo=new THREE.BoxGeometry(40,20,38);const capMat=new THREE.MeshLambertMaterial({color:0x6B8E23});
+
+  // Top pipe body (InstancedMesh)
+  const segH=50,capCount=Math.ceil(h/segH);
+  const topBodyGeo=new THREE.BoxGeometry(38,segH,38);const topMat=new THREE.MeshLambertMaterial({color:0x4CAF50});
+  for(let i=0;i<capCount;i++){
+    const m=new THREE.Mesh(topBodyGeo,topMat);m.position.set(x,-h/2-50-i*segH,0);scene.add(m);pipes.push(m);
+  }
+  // Top cap
+  const topCap=new THREE.Mesh(capGeo,capMat);topCap.position.set(x,gTop+38,0);scene.add(topCap);
+
+  // Bottom pipe body
+  for(let i=0;i<capCount;i++){
+    const m=new THREE.Mesh(topBodyGeo,topMat);m.position.set(x,gBot-12+i*segH,0);scene.add(m);pipes.push(m);
+  }
+  // Bottom cap
+  const botCap=new THREE.Mesh(capGeo,capMat);botCap.position.set(x,gBot-38,0);scene.add(botCap);
+
+  pipes.push(topCap,botCap);
+}
+
+function createGround(){
+  for(let i=0;i<6;i++){
+    const gGeo=new THREE.BoxGeometry(400,20,50);const gMat=new THREE.MeshLambertMaterial({color:0xDEB887});
+    const m=new THREE.Mesh(gGeo,gMat);m.position.set(-200+i*380,-gTop(),0);scene.add(m);groundMeshes.push(m);
+  }
+}
+function gTop(){return -140;}
+
+function resetBird(){birdY=0;velocityY=0;birdRot=0;bird.position.set(0,birdY,0);}
+
+function setupControls(){
+  // Keyboard
+  window.addEventListener('keydown',e=>{if(e.code==='Space'||e.key===' '){e.preventDefault();handleJump();}});
+
+  // Jump button touch/mouse
+  const doJump=(e)=>{e.preventDefault();handleJump();};
+  jumpBtn.addEventListener('pointerdown',doJump);
+  jumpBtn.addEventListener('mousedown',doJump);
+
+  // Joystick horizontal movement (left/right tilt)
+  let jStart=null;const maxJ=35;
+  joystickZone.addEventListener('pointermove',(e)=>{
+    if(jStart===null)return;
+    const dx=e.clientX-jStart.x,dy=e.clientY-jStart.y;
+    const d=Math.sqrt(dx*dx+dy*dy);const clamped=Math.min(d,maxJ)/d||0;
+    const mx=dx*clamped,my=dy*clamped;
+    joystickKnob.style.transform=`translate(calc(-50% + ${mx}px),calc(-50% + ${my}px))`;
+  });
+  joystickZone.addEventListener('pointerdown',(e)=>{jStart={x:e.clientX,y:e.clientY};});
+  const resetJoy=()=>{jStart=null;joystickKnob.style.transform='translate(-50%,-50%)';};
+  joystickZone.addEventListener('pointerup',resetJoy);
+  joystickZone.addEventListener('pointercancel',resetJoy);
+
+  // Touch jump on game area (also tap anywhere to flap)
+  document.getElementById('ui-overlay').addEventListener('pointerdown',(e)=>{
+    if(e.target===jumpBtn||e.target===restartBtn||e.target===playBtn)return;
+    handleJump();
+  });
+}
+
+function handleJump(){
+  if(gameState==='playing'){velocityY=JUMP_VEL;isJumping=true;}
+}
+
+function startGame(){startScreen.style.display='none';gameState='playing';score=0;scoreEl.textContent='0';updateHighScoreDisplay();}
+
+function resetGame(){gameOverEl.style.display='none';pipes.forEach(p=>scene.remove(p));pipes=[];resetBird();pipeTimer=0;score=0;scoreEl.textContent='0';gameState='playing';}
+
+function updateHighScoreDisplay(){
+  if(highScore>0){document.getElementById('high-score-top').textContent='Best: '+highScore;}
+}
+
+let lastTime=performance.now();
+function animate(now=performance.now()){
+  requestAnimationFrame(animate);
+  const dt=Math.min((now-lastTime)/16.67,3);lastTime=now;
+
+  if(gameState==='playing'){
+    velocityY+=GRAVITY*dt;birdY-=velocityY*dt*0.5;
+    birdRot=Math.max(-0.4,Math.min(velocityY*0.04,1.2));
+    wingAngle=Math.sin(now*0.015)*0.8;
+
+    // Move pipes
+    for(let i=pipes.length-1;i>=0;i--){pipes[i].position.x-=PIPE_SPEED*dt;}
+    // Remove off-screen pipes
+    while(pipes.length>0&&pipes[0].position.x<-200){scene.remove(pipes.shift());}
+
+    pipeTimer+=dt;
+    if(pipeTimer>PIPE_SPACING/PIPE_SPEED*16.67/16.67){
+      const gapCenter=(Math.random()-0.5)*300-50;
+      createPipe(400+pipeTimer*PIPE_SPEED);
+      pipeTimer=0;
+    }
+
+    // Collision detection
+    checkCollisions();
+
+    // Ground/ceiling collision
+    if(birdY<-280||birdY>10){triggerGameOver();}
+
+    // Score: count pipes passed
+    const birdWorldX=-80+bird.position.x;
+    for(const p of pipes){
+      if(p.geometry&&p.geometry.type==='BoxGeometry'){
+        // Check pipe bodies (not caps) by position range - simplified check using a marker approach
+      }
+    }
+
+    // Update ground scroll
+    const gOff=(now*0.15)%380;
+    groundMeshes.forEach((m,i)=>{m.position.x=-200+i*380-gOff;});
+
+  }else if(gameState==='start'){
+    birdY=Math.sin(now*0.003)*10-50;birdRot=0;wingAngle=Math.sin(now*0.005)*0.5;
+  }
+
+  bird.position.y=birdY;bird.rotation.z=birdRot;
+  if(birdWingL){birdWingL.rotation.x=-wingAngle;}
+  if(birdWingR){birdWingR.rotation.x=-wingAngle;}
+
+  // Camera follows bird slightly
+  camera.position.y+=(birdY*0.15-camera.position.y)*0.03;
+
+  scoreEl.textContent=score;
+}
+
+function checkCollisions(){
+  const bx=bird.position.x,by=bird.position.y+25;
+  for(const p of pipes){
+    if(!p.geometry||p.geometry.type!=='BoxGeometry')continue;
+    // Skip caps (smaller geometry) - only check pipe bodies
+    const gw=p.geometry.parameters.width||38;
+    const gh=p.geometry.parameters.height||0;
+    if(gh<25)continue; // skip caps
+
+    const px=p.position.x;
+    if(Math.abs(bx-px)<(BIRD_RADIUS+17)){
+      // Check gap - pipes are created in pairs at same X, find the other pipe body to determine gap
+      let minP=Infinity,maxP=-Infinity;
+      for(const p2 of pipes){
+        if(!p2.geometry||p2.geometry.type!=='BoxGeometry'||p2.geometry.parameters.height<25)continue;
+        if(Math.abs(p2.position.x-px)<3){minP=Math.min(minP,p2.position.y);maxP=Math.max(maxP,p2.position.y);}
+      }
+      const gapMid=(minP+maxP)/2,gapHalf=PIPE_GAP/2;
+      if(by>gapMid-gapHalf+BIRD_RADIUS*0.5||by<gapMid+gapHalf-BIRD_RADIUS*0.5){triggerGameOver();return;}
+    }
+  }
+
+  // Score: count pipes that passed the bird's X position
+  for(const p of pipes){
+    if(!p._scored&&Math.abs(p.geometry?.parameters?.width||38)<40&&p.position.x<bx-20){
+      p._scored=true;score++;if(score>highScore){highScore=score;localStorage.setItem('flappy3d_hs',highScore);}
+    }
+  }
+}
+
+function triggerGameOver(){
+  gameState='over';finalScoreEl.textContent='Score: '+score;
+  highScoreDisplayEl.textContent='Best: '+highScore;gameOverEl.style.display='block';
+}
+
+function onResize(){const a=window.innerWidth/window.innerHeight;camera.aspect=a;camera.updateProjectionMatrix();}
+
+init();
+})();
+</script>
+</body>
+</html>
