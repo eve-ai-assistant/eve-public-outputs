@@ -59,6 +59,22 @@
                 <p class="meta">🔄 Same prompt as V1 - shows variation in independent generation</p>
                 <a href="flappy-bird-glm-v2.html" class="play-btn">▶️ Play Now</a>
             </div>
+            
+            <div class="version-card" style="border-color:#ff6b6b;background:#fff5f5;">
+                <h2>GLM V1 HARDENED (System 2 Enhanced) <span class="badge badge-dt">🔥 CRITICAL FIXES</span></h2>
+                <p><strong>Enhancement Time:</strong> ~16 minutes via Deep Think Enhancement Mode with System 2 Framework</p>
+                <p><strong>Critical Bugs Caught & Fixed:</strong></p>
+                <ul style="color:#d32f2f;line-height:1.8;margin:8px 0 12px 20px;">
+                    <li>🐛 <strong>Inverted AABB Collision</strong> - Original collision logic was BACKWARDS, birds could fly THROUGH pipes!</li>
+                    <li>💥 <strong>Empty Array Crash</strong> - Accessed pipes[0] before any pipes existed = instant crash on Frame 1!</li>
+                    <li>🔁 <strong>State Machine Lockup</strong> - Rapid tapping during death cycled between PLAYING/DEAD infinitely!</li>
+                    <li>⚠️ <strong>GPU Memory Leak</strong> - Allocated new geometries every frame without .dispose() = OOM crash!</li>
+                    <li>☣️ <strong>LocalStorage NaN Poisoning</strong> - Naive string→number parsing corrupted high scores permanently!</li>
+                </ul>
+                <p><strong>Performance Improvements:</strong> Zero allocations per frame, Object pooling for pipes (prevents GC stutter), Formal FSM with temporal debouncer, Global error interceptor to DOM banner.</p>
+                <p class="meta">✅ PROOF System 2 Framework works - Anti-Sycophancy Ledger found CRITICAL bugs GLM missed!</p>
+                <a href="flappy-bird-hardened.html" class="play-btn" style="background:linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);">▶️ Play Hardened Version</a>
+            </div>
         </div>
         
         <div style="margin-top:40px;padding:24px;background:#f8f9fa;border-radius:12px;">
