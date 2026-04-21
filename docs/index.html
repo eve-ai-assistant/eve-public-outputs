@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eve Public Outputs - Flappy Bird 3D Gallery</title>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        body { font-family: system-ui, sans-serif; max-width: 950px; margin: 40px auto; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
         .container { background: white; border-radius: 16px; padding: 40px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
         h1 { color: #333; margin-bottom: 10px; }
         .subtitle { color: #666; margin-bottom: 30px; font-size: 18px; }
@@ -14,13 +14,12 @@
         .version-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); border-color: #667eea; }
         .version-card h2 { margin: 0 0 12px 0; color: #333; font-size: 24px; }
         .version-card p { color: #666; line-height: 1.6; margin-bottom: 8px; }
-        .version-card .meta { color: #999; font-size: 14px; margin-top: 12px; }
+        .version-card .meta { color: #999; font-size: 14px; margin-top: 12px; background: #f8f9fa; padding: 10px; border-radius: 8px; }
         .play-btn { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 18px; transition: transform 0.2s, box-shadow 0.2s; }
         .play-btn:hover { transform: scale(1.05); box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4); }
         .badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-left: 12px; }
         .badge-dt { background: #ff6b6b; color: white; }
         .badge-glm { background: #4ecdc4; color: white; }
-        .badge-sys2 { background: #95a5a6; color: white; font-style: italic; }
     </style>
 </head>
 <body>
@@ -38,6 +37,14 @@
             </div>
             
             <div class="version-card">
+                <h2>Deep Think V2 (Fresh Extraction) <span class="badge badge-dt">System 2</span></h2>
+                <p><strong>Generation Time:</strong> ~9 minutes via Gemini Deep Think (account u/1 after rate limit rotation)</p>
+                <p><strong>Features:</strong> 3D isometric camera, Three.js r128, yellow bird with animated wings, green cylinder pipes with caps, parallax clouds & bushes, glassmorphism UI panels, PCFSoft shadow mapping, LocalStorage high score, mobile-first vertical mode.</p>
+                <p class="meta">✅ Extracted from .txt workflow - markdown-wrapped output properly parsed</p>
+                <a href="flappy-bird-deep-think-v2.html" class="play-btn">▶️ Play Now</a>
+            </div>
+            
+            <div class="version-card">
                 <h2>GLM 5.1 V1 <span class="badge badge-glm">Local LLM</span></h2>
                 <p><strong>Generation Time:</strong> ~38 minutes direct code generation (no browser)</p>
                 <p><strong>Features:</strong> Camera at (6,9,18) for angled view, yellow bird with animated wing flapping, scrolling pipes with random gaps, glassmorphism UI, shadows via PCFSoftShadowMap, Pointer Events + setPointerCapture for mobile, clean architecture under 400 lines.</p>
@@ -46,20 +53,21 @@
             </div>
             
             <div class="version-card">
-                <h2>GLM 5.1 V2 <span class="badge badge-glm">Local LLM</span></h2>
-                <p><strong>Generation Time:</strong> ~5-10 minutes (in progress)</p>
-                <p><strong>Features:</strong> Same specs as V1 - independent generation to observe variation in code structure, architecture decisions, and implementation style from identical prompt.</p>
-                <p class="meta">⏳ Generating now - check back soon!</p>
-                <a href="#" class="play-btn" style="opacity:0.5;cursor:not-allowed">Coming Soon</a>
+                <h2>GLM 5.1 V2 (Independent Gen) <span class="badge badge-glm">Local LLM</span></h2>
+                <p><strong>Generation Time:</strong> ~8 minutes direct code generation</p>
+                <p><strong>Features:</strong> Camera at (-2,6,12), InstancedMesh pipes (20 pairs with top+bottom bodies + caps as separate instanced meshes), sky gradient canvas texture, drifting clouds, scrolling ground stripes, glassmorphism UI, PCFSoft shadows.</p>
+                <p class="meta">🔄 Same prompt as V1 - shows variation in independent generation</p>
+                <a href="flappy-bird-glm-v2.html" class="play-btn">▶️ Play Now</a>
             </div>
         </div>
         
         <div style="margin-top:40px;padding:24px;background:#f8f9fa;border-radius:12px;">
             <h3 style="margin-bottom:12px;color:#333">📊 Comparison Notes</h3>
             <ul style="color:#666;line-height:1.8;">
-                <li><strong>Deep Think (System 2):</strong> Slower generation but potentially cleaner architecture, better reasoning about edge cases</li>
-                <li><strong>GLM 5.1 (Local LLM):</strong> Faster direct coding, no browser automation needed, good for rapid iteration</li>
-                <li><strong>V1 vs V2 Variation:</strong> Same prompt to GLM should show how much code structure varies between independent generations</li>
+                <li><strong>Deep Think (System 2):</strong> Slower generation but potentially cleaner architecture, better reasoning about edge cases, requires browser automation workflow with account rotation for rate limits</li>
+                <li><strong>GLM 5.1 (Local LLM):</strong> Faster direct coding, no browser automation needed, good for rapid iteration and A/B testing variations</li>
+                <li><strong>V1 vs V2 Variation:</strong> Same prompt to GLM shows how code structure varies between independent generations - different camera positions, pipe implementations, animation styles</li>
+                <li><strong>Best Practice:</strong> Use Deep Think for complex architecture decisions, GLM for rapid prototyping and iteration. Always save Deep Think outputs as .txt, extract HTML after!</li>
             </ul>
         </div>
     </div>
