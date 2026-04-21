@@ -3,13 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eve Public Outputs</title>
-    <style>body{font-family:system-ui,sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center}a{display:inline-block;background:#667eea;color:white;padding:15px 30px;border-radius:8px;text-decoration:none;font-weight:600;margin:10px}</style>
+    <title>Eve Public Outputs - Project Gallery</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 60px auto; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .container { background: white; border-radius: 16px; padding: 40px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        h1 { color: #333; margin-bottom: 10px; }
+        .subtitle { color: #666; margin-bottom: 30px; }
+        .project-grid { display: grid; gap: 20px; }
+        .project-card { border: 2px solid #e0e0e0; border-radius: 12px; padding: 24px; transition: all 0.3s ease; }
+        .project-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); border-color: #667eea; }
+        .project-card h2 { margin: 0 0 10px 0; color: #333; }
+        .project-card p { color: #666; line-height: 1.6; }
+        .play-btn { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 15px; transition: transform 0.2s; }
+        .play-btn:hover { transform: scale(1.05); }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-left: 10px; }
+        .badge-dt { background: #ff6b6b; color: white; }
+        .badge-glm { background: #4ecdc4; color: white; }
+    </style>
 </head>
 <body>
-    <h1>🎮 Eve Public Outputs</h1>
-    <p>Select a project to play:</p>
-    <a href="flappy-bird-deep-think-clean.html">▶️ Flappy Bird 3D (Deep Think)</a>
-    <a href="flappy-bird-glm.html">▶️ Flappy Bird 3D (GLM 5.1)</a>
+    <div class="container">
+        <h1>🎮 Eve Public Outputs</h1>
+        <p class="subtitle">Project Gallery - Games, Research & More</p>
+        
+        <div class="project-grid">
+            <div class="project-card">
+                <h2>Flappy Bird 3D (Deep Think) <span class="badge badge-dt">System 2</span></h2>
+                <p>Gemini Deep Think's System 2 reasoning output. Took ~14 minutes via browser automation with account rotation. Features angled isometric perspective, yellow bird character, green pipes, glassmorphism UI, and LocalStorage persistence.</p>
+                <a href="flappy-bird-deep-think-clean.html" class="play-btn">▶️ Play Now</a>
+            </div>
+            
+            <div class="project-card">
+                <h2>Flappy Bird 3D (GLM 5.1) <span class="badge badge-glm">Local LLM</span></h2>
+                <p>Direct code generation from GLM 5.1 744B model. Completed in ~38 minutes with clean architecture under 400 lines. Features 30° angled camera view, animated bird with wing flapping, scrolling pipes, shadows, and mobile-optimized controls.</p>
+                <a href="flappy-bird-glm.html" class="play-btn">▶️ Play Now</a>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
