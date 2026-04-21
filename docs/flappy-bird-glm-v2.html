@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Flappy Bird 3D V2</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;background:#87ceeb;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;width:100vw;height:100vh}
+.ui-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:rgba(255,255,255,.15);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,.3);border-radius:20px;padding:30px 40px;
+  text-align:center;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;display:none}
+.ui-panel h2{font-size:28px;margin-bottom:8px;text-shadow:0 2px 4px rgba(0,0,0,.3)}
+.ui-panel p{font-size:16px;opacity:.85;line-height:1.5}
+#score{position:absolute;top:40px;left:50%;transform:translateX(-50%);
+  font:bold 48px 'Segoe UI',system-ui,sans-serif;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.4);
+  pointer-events:none;z-index:10}
+</style>
+</head>
+<body>
+<div id="score">0</div>
+<div class="ui-panel" id="startPanel">
+  <h2>Flappy Bird 3D</h2>
+  <p>Tap to fly!</p>
+</div>
+<div class="ui-panel" id="overPanel">
+  <h2>Game Over</h2>
+  <p id="finalScore"></p>
+  <p id="bestScore"></p>
+  <p style="margin-top:12px;opacity:.6">Tap to restart</p>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const W=window.innerWidth,H=window.innerHeight;
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setSize(W,H);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+// Sky gradient
+const skyCanvas=document.createElement('canvas');skyCanvas.width=2;skyCanvas.height=512;
+const sctx=skyCanvas.getContext('2d');
+const grad=sctx.createLinearGradient(0,0,0,512);
+grad.addColorStop(0,'#4a90d9');grad.addColorStop(0.5,'#87ceeb');grad.addColorStop(1,'#e8f4fd');
+sctx.fillStyle=grad;sctx.fillRect(0,0,2,512);
+scene.background=new THREE.CanvasTexture(skyCanvas);
+
+// Camera - angled ~30deg from side
+const camera=new THREE.PerspectiveCamera(50,W/H,0.1,200);
+camera.position.set(-2,6,12);camera.lookAt(4,2,0);
+
+// Lights
+const ambLight=new THREE.AmbientLight(0xffffff,0.5);scene.add(ambLight);
+const dirLight=new THREE.DirectionalLight(0xfff5e6,1);
+dirLight.position.set(5,15,8);dirLight.castShadow=true;
+dirLight.shadow.mapSize.set(1024,1024);
+dirLight.shadow.camera.left=-20;dirLight.shadow.camera.right=20;
+dirLight.shadow.camera.top=15;dirLight.shadow.camera.bottom=-10;
+scene.add(dirLight);
+
+// Ground
+const groundGeo=new THREE.PlaneGeometry(80,40);
+const groundMat=new THREE.MeshLambertMaterial({color:0x8bc34a});
+const ground=new THREE.Mesh(groundGeo,groundMat);
+ground.rotation.x=-Math.PI/2;ground.position.set(10,-1.5,0);ground.receiveShadow=true;
+scene.add(ground);
+
+// Ground stripes for scrolling feel
+const stripeCanvas=document.createElement('canvas');stripeCanvas.width=256;stripeCanvas.height=256;
+const stCtx=stripeCanvas.getContext('2d');
+stCtx.fillStyle='#8bc34a';stCtx.fillRect(0,0,256,256);
+for(let i=0;i<256;i+=32){stCtx.fillStyle=i%64===0?'#7cb342':'#9ccc65';stCtx.fillRect(i,0,32,256)}
+const stripeTex=new THREE.CanvasTexture(stripeCanvas);
+stripeTex.wrapS=stripeTex.wrapT=THREE.RepeatWrapping;stripeTex.repeat.set(10,5);
+groundMat.map=stripeTex;groundMat.needsUpdate=true;
+
+// Clouds
+function makeCloud(x,y,z,s){
+  const g=new THREE.Group();
+  const m=new THREE.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:0.9});
+  for(let i=0;i<5;i++){
+    const sp=new THREE.Mesh(new THREE.SphereGeometry(1+Math.random()*.8,8,6),m);
+    sp.position.set(i*1.2-2,(Math.random()-.5)*.5,(Math.random()-.5)*.5);g.add(sp);
+  }
+  g.position.set(x,y,z);g.scale.setScalar(s||1);scene.add(g);return g;
+}
+const clouds=[makeCloud(10,12,-8,1.5),makeCloud(-5,14,-12,2),makeCloud(25,11,-6,1),
+  makeCloud(-15,13,-10,1.8),makeCloud(35,12,-9,1.3)];
+
+// Bird
+const birdGroup=new THREE.Group();
+const bodyGeo=new THREE.SphereGeometry(0.45,16,12);
+const bodyMat=new THREE.MeshPhongMaterial({color:0xffd700,shininess:60});
+const bodyMesh=new THREE.Mesh(bodyGeo,bodyMat);bodyMesh.castShadow=true;
+birdGroup.add(bodyMesh);
+
+// Wings
+const wingGeo=new THREE.PlaneGeometry(0.6,0.3);
+const wingMat=new THREE.MeshPhongMaterial({color:0xffaa00,side:THREE.DoubleSide});
+const leftWing=new THREE.Mesh(wingGeo,wingMat);leftWing.position.set(-.1,.15,.35);leftWing.rotation.y=0.3;
+const rightWing=new THREE.Mesh(wingGeo.clone(),wingMat.clone());rightWing.position.set(-.1,.15,-.35);rightWing.rotation.y=-0.3;
+birdGroup.add(leftWing,rightWing);
+
+// Eye
+const eyeGeo=new THREE.SphereGeometry(0.08,8,6);
+const eyeMat=new THREE.MeshPhongMaterial({color:0x222222});
+const eyeL=new THREE.Mesh(eyeGeo,eyeMat);eyeL.position.set(.3,.15,.25);
+const eyeR=new THREE.Mesh(eyeGeo.clone(),eyeMat.clone());eyeR.position.set(.3,.15,-.25);
+birdGroup.add(eyeL,eyeR);
+
+// Beak
+const beakGeo=new THREE.ConeGeometry(0.12,0.3,6);
+const beakMat=new THREE.MeshPhongMaterial({color:0xff6600});
+const beak=new THREE.Mesh(beakGeo,beakMat);
+beak.rotation.z=-Math.PI/2;beak.position.set(.55,0,0);birdGroup.add(beak);
+
+scene.add(birdGroup);
+
+// Pipes - InstancedMesh
+const PIPE_COUNT=20;
+const pipeBodyGeo=new THREE.CylinderGeometry(0.7,0.7,1,12);
+const pipeCapGeo=new THREE.CylinderGeometry(0.9,0.9,0.4,12);
+const pipeMat=new THREE.MeshPhongMaterial({color:0x2e7d32});
+const capMat=new THREE.MeshPhongMaterial({color:0x1b5e20});
+
+// We need pairs (top+bottom body + top+bottom cap = 4 meshes per pair)
+const bodies=new THREE.InstancedMesh(pipeBodyGeo,pipeMat,PIPE_COUNT*2);
+const caps=new THREE.InstancedMesh(pipeCapGeo,capMat,PIPE_COUNT*2);
+bodies.castShadow=true;caps.castShadow=true;
+scene.add(bodies);scene.add(caps);
+
+// Game state
+let birdY=3,birdVel=0,score=0,gameState='start',highScore=parseInt(localStorage.getItem('flappy3d_hi'))||0;
+const GAP=5.5,PIPE_SPACE=7,PIPE_START_X=12,PIPE_SPEED=0.06;
+const GRAVITY=-0.008,FLAP_VEL=0.14;
+let pipes=[],groundOffset=0;
+
+function initPipes(){
+  pipes=[];
+  for(let i=0;i<PIPE_COUNT;i++){
+    const gapY=1+Math.random()*7;
+    const x=PIPE_START_X+i*PIPE_SPACE;
+    pipes.push({x,gapY,scored:false});
+  }
+}
+
+const dummy=new THREE.Object3D();
+function updatePipeMeshes(){
+  for(let i=0;i<PIPE_COUNT;i++){
+    const p=pipes[i];if(!p)continue;
+    // Bottom body
+    const bH=Math.max(0.1,p.gapY-GAP/2-(-1.5));
+    dummy.position.set(p.x,bH/2-1.5,0);dummy.scale.set(1,bH,1);dummy.updateMatrix();
+    bodies.setMatrixAt(i*2,dummy.matrix);
+    // Bottom cap
+    dummy.position.set(p.x,p.gapY-GAP/2,0);dummy.scale.set(1,1,1);dummy.updateMatrix();
+    caps.setMatrixAt(i*2,dummy.matrix);
+    // Top body
+    const tH=Math.max(0.1,14-(p.gapY+GAP/2));
+    dummy.position.set(p.x,p.gapY+GAP/2+tH/2,0);dummy.scale.set(1,tH,1);dummy.updateMatrix();
+    bodies.setMatrixAt(i*2+1,dummy.matrix);
+    // Top cap
+    dummy.position.set(p.x,p.gapY+GAP/2,0);dummy.scale.set(1,1,1);dummy.updateMatrix();
+    caps.setMatrixAt(i*2+1,dummy.matrix);
+  }
+  bodies.instanceMatrix.needsUpdate=true;
+  caps.instanceMatrix.needsUpdate=true;
+}
+
+function resetGame(){
+  birdY=3;birdVel=0;score=0;gameState='playing';
+  document.getElementById('score').textContent='0';
+  document.getElementById('startPanel').style.display='none';
+  document.getElementById('overPanel').style.display='none';
+  initPipes();
+}
+
+// Input
+function flap(){
+  if(gameState==='start'){resetGame();birdVel=FLAP_VEL;return}
+  if(gameState==='over'){gameState='start';document.getElementById('startPanel').style.display='';
+    document.getElementById('overPanel').style.display='none';initPipes();birdY=3;birdVel=0;score=0;return}
+  birdVel=FLAP_VEL;
+}
+renderer.domElement.addEventListener('pointerdown',e=>{e.preventDefault();flap()});
+renderer.domElement.addEventListener('pointerdown',e=>{try{e.target.setPointerCapture(e.pointerId)}catch(_){}});
+
+// Collision
+function checkCollision(){
+  if(birdY<-1||birdY>13)return true;
+  for(const p of pipes){
+    const dx=Math.abs(p.x-0);
+    if(dx<1.2){
+      if(birdY<p.gapY-GAP/2+0.4||birdY>p.gapY+GAP/2-0.4)return true;
+    }
+  }
+  return false;
+}
+
+// Game loop
+let lastTime=0,wingAngle=0;
+function animate(time){
+  requestAnimationFrame(animate);
+  const dt=Math.min((time-lastTime)/16,3);lastTime=time;
+
+  // Clouds drift
+  clouds.forEach(c=>{c.position.x+=0.005*dt;if(c.position.x>40)c.position.x=-20});
+
+  if(gameState==='playing'){
+    birdVel+=GRAVITY*dt;birdY+=birdVel*dt;
+    birdGroup.position.y=birdY;
+
+    // Wing flap animation
+    wingAngle+=(birdVel>0?0.3:-0.15)*dt;
+    leftWing.rotation.x=Math.sin(wingAngle*8)*0.5;
+    rightWing.rotation.x=-Math.sin(wingAngle*8)*0.5;
+
+    // Bird tilt
+    birdGroup.rotation.z=THREE.MathUtils.lerp(birdGroup.rotation.z,birdVel*3,0.1*dt);
+
+    // Move pipes
+    for(const p of pipes){p.x-=PIPE_SPEED*dt}
+    // Recycle pipes
+    const first=pipes[0];
+    if(first&&first.x<-6){
+      const last=pipes[pipes.length-1];
+      first.x=last.x+PIPE_SPACE;
+      first.gapY=1+Math.random()*7;first.scored=false;
+      pipes.push(pipes.shift());
+    }
+    // Score
+    for(const p of pipes){
+      if(!p.scored&&p.x<0){p.scored=true;score++;
+        document.getElementById('score').textContent=score}
+    }
+
+    updatePipeMeshes();
+
+    // Ground scroll
+    groundOffset+=PIPE_SPEED*dt;
+    stripeTex.offset.x=groundOffset*0.15;
+
+    if(checkCollision()){
+      gameState='over';
+      if(score>highScore){highScore=score;localStorage.setItem('flappy3d_hi',highScore)}
+      document.getElementById('overPanel').style.display='';
+      document.getElementById('finalScore').textContent='Score: '+score;
+      document.getElementById('bestScore').textContent='Best: '+highScore;
+    }
+  } else {
+    // Idle bob
+    birdGroup.position.y=3+Math.sin(time*0.002)*0.5;
+    birdGroup.rotation.z=Math.sin(time*0.003)*0.1;
+    leftWing.rotation.x=Math.sin(time*0.006)*0.3;
+    rightWing.rotation.x=-Math.sin(time*0.006)*0.3;
+  }
+
+  renderer.render(scene,camera);
+}
+
+// Init
+initPipes();updatePipeMeshes();
+document.getElementById('startPanel').style.display='';
+birdGroup.position.set(0,3,0);
+animate(0);
+
+window.addEventListener('resize',()=>{
+  const w=innerWidth,h=innerHeight;
+  camera.aspect=w/h;camera.updateProjectionMatrix();
+  renderer.setSize(w,h);
+});
+})();
+</script>
+</body>
+</html>
