@@ -1,28 +1,3 @@
-### 🧠 REASONING TRACE
-
-#### 2. Adversarial Pre-Mortem Protections (7 Universal Categories)
-* **Hostile Boundary:** [Simulated Attack: Window resize to `0x0` / Extreme Aspect Ratios] -> Mitigated by mathematically clamping spatial boundaries (`Math.max(1, innerWidth)`) preventing `NaN` cascade corruption of the WebGL Projection Matrix. Bounded temporal delta `dt` to `[0.001, 0.05]` to prevent physics quantum-tunneling exploits during heavy lag or tab suspension.
-* **State Collapse:** [Simulated Race Condition: Empty Array Dereference on Frame 1] -> The legacy code instantly crashed on the first frame if the user started the game before a pipe was added, as `pipes[0].position.x` was executed on an empty array. Mitigated via a strict, deterministic Pre-Allocated Object Pool seeded safely during the `TITLE` idle state.
-* **Resource Starvation:** [Simulated Memory/VRAM Leak] -> The original architecture allocated unbounded `THREE.CylinderGeometry` and `THREE.MeshStandardMaterial` instances inside `addPipe()` continuously, explicitly abandoning them without calling `.dispose()`, guaranteeing severe GC stutter and an ultimate Out-Of-Memory (OOM) GPU crash. Mitigated via a Zero-Allocation Ring Buffer. Geometries are mutated solely via zero-cost matrix transforms (`scale.y`).
-* **Dependency Cascade:** [Simulated Network/CDN Partition] -> Mitigated by wrapping the initialization pipeline in an explicit `typeof THREE === 'undefined'` verification block, failing gracefully into a prominent HTML warning rather than silently crashing the application thread.
-* **Performance Cascade:** [Simulated Bottleneck: Extraneous Raycasting/Evaluation] -> Original collision iterations aggressively looped un-bounded un-culled arrays. Mitigated by culling evaluated pipes mathematically upon eviction and constraining iteration strictly to active subset layers.
-* **Security/Auth:** [Simulated Exploit: Storage String Injection] -> `+localStorage.getItem` naively parsed string payloads directly into `NaN`, permanently poisoning the highest score tracker. Mitigated via an insulated `StorageSafe` sandbox strictly verifying numeric continuity via `parseInt` and `Number.isFinite`.
-* **Observability Blackhole:** [Simulated Silent Rendering Failure] -> Mitigated by injecting a global `window.addEventListener('error')` bounding interceptor, capturing engine exceptions natively into a high-visibility DOM banner rather than dropping them implicitly in DevTools.
-
-#### 3. Iterative Refinement Ledger (Anti-Sycophancy)
-* Cycle 1 (Critic Audit): Flaw: [CRITICAL] The AABB collision algorithm was inverted and geometrically broken: `birdY + r > gapY - GAP / 2` checked if the *top* of the bird was higher than the *bottom* of the top pipe (which is always true while inside the void!). Scoring evaluated Y-axis passing (`gapY > birdY`) rather than horizontal traversal. -> Fix: Rewrote Cartesian checks to validate strict void boundary inclusion (`birdY - R < gapBottom || birdY + R > gapTop`). Relocated scoring to validate strict X-axis origin traversal (`p.position.x < BIRD_X`).
-* Cycle 2 (Red Team Pass): Flaw: [HIGH] Rapid input tapping during collision blindly cycled the `started` variable back to true while the death animation played, causing a lockup loop between the `PLAYING` and `DEAD` states, circumventing the game-over screen entirely. -> Fix: Integrated a formal Finite State Machine (`TITLE`, `PLAYING`, `DEAD`) accompanied by a rigid temporal debouncer (`Date.now() - deathTime > 500`) to strictly enforce game over recognition.
-* Cycle 3 (Polish): Flaw: [MEDIUM] Dynamic resizing geometries forced complex relative translation math requiring runtime Y-offset adjustments per pipe. -> Fix: Translated the base `CylinderGeometry` origin matrix implicitly (`pGeo.translate(0, 0.5, 0)`). This ensures base matrices rest mathematically at `Y=0`, allowing unidirectional O(1) vertical scaling (`scale.y = height`) originating rigidly from the boundary coordinate. 
-
-#### 4. Enhancement Diff Summary
-* Architecture/Logic: Demolished the fundamentally broken `pipes` array allocations in favor of a robust, constant-time Memory Pool. Corrected physics constraints to prevent inescapable spatial overlapping constraints. 
-* Security/Resilience: Encapsulated the `localStorage` payload pipeline against prototype and NaN pollution. Defended the `touchstart` event loops with strict `preventDefault()` wrappers blocking double-tap zooming vulnerabilities.
-* Performance/Scale: Scaled garbage generation to **0 allocations per frame** via instanced matrix manipulation. Extracted random, un-tracked magic numbers into an immutable, tightly packed `CONFIG` memory object. 
-
-===
-
-### 💻 PRODUCTION-GRADE CODE
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -462,6 +437,3 @@ function bindEvents() {
 </script>
 </body>
 </html>
-```
-
-**SYSTEM 2 CERTIFICATION:** I certify that I utilized Test-Time Compute to simulate failure vectors and execute 3 rigorous internal refinement cycles—explicitly catching Critical/High severity bugs before generating this output. Token cost is irrelevant; correctness is absolute.
