@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Flappy 3D</title>
+    <style>
+        body { 
+            margin: 0; padding: 0; overflow: hidden; background: #87CEEB; touch-action: none; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-user-select: none; user-select: none;
+        }
+        #gameCanvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+        .ui-panel {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(20, 25, 30, 0.65);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            border-radius: 20px; padding: 32px; color: white; text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1);
+            display: none; width: calc(100% - 64px); max-width: 320px; box-sizing: border-box;
+        }
+        .active { display: block; }
+        h1 { margin: 0 0 12px 0; font-size: 32px; font-weight: 800; letter-spacing: -0.5px; }
+        p { margin: 0 0 24px 0; font-size: 16px; opacity: 0.85; line-height: 1.4; }
+        .score-display {
+            position: absolute; top: env(safe-area-inset-top, 40px); left: 0; width: 100%;
+            text-align: center; color: white; font-size: 56px; font-weight: 800;
+            text-shadow: 0 4px 16px rgba(0,0,0,0.4); pointer-events: none; z-index: 10; display: none;
+            font-variant-numeric: tabular-nums;
+        }
+        button {
+            background: #ffffff; color: #14191e; border: none; padding: 16px;
+            font-size: 18px; font-weight: 700; border-radius: 12px; cursor: pointer;
+            width: 100%; transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1); 
+            touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+        }
+        button:active { transform: scale(0.94); }
+    </style>
+</head>
+<body>
+    <div id="scoreDisplay" class="score-display">0</div>
+    
+    <div id="startScreen" class="ui-panel active">
+        <h1>Flappy 3D</h1>
+        <p>Tap, Click or Space to flap.<br>Dodge the green pipes!</p>
+        <button id="startBtn">START</button>
+    </div>
+
+    <div id="gameOverScreen" class="ui-panel">
+        <h1>Game Over</h1>
+        <p id="finalScore">Score: 0<br>Best: 0</p>
+        <button id="restartBtn">TRY AGAIN</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+    "use strict";
+
+    // Engine & Renderer Initialization
+    const canvas = document.createElement('canvas');
+    canvas.id = 'gameCanvas';
+    document.body.insertBefore(canvas, document.body.firstChild);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB);
+    scene.fog = new THREE.Fog(0x87CEEB, 15, 45);
+
+    // Optimized Cinematic Viewpoint
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(-6, 3, 10);
+    camera.lookAt(0, 0, 0);
+
+    // Lighting Array
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+    dirLight.position.set(-5, 12, 8);
+    dirLight.castShadow = true;
+    dirLight.shadow.camera.top = 15;
+    dirLight.shadow.camera.bottom = -15;
+    dirLight.shadow.camera.left = -15;
+    dirLight.shadow.camera.right = 15;
+    dirLight.shadow.mapSize.width = 1024;
+    dirLight.shadow.mapSize.height = 1024;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    // Player Entity (Low-poly stylized)
+    const birdGroup = new THREE.Group();
+    const bodyGeo = new THREE.IcosahedronGeometry(0.5, 0);
+    const matYellow = new THREE.MeshStandardMaterial({ color: 0xffaa00, roughness: 0.3, flatShading: true });
+    const body = new THREE.Mesh(bodyGeo, matYellow);
+    body.castShadow = true;
+    birdGroup.add(body);
+
+    const wingGeo = new THREE.BoxGeometry(0.5, 0.1, 0.8);
+    const matOrange = new THREE.MeshStandardMaterial({ color: 0xff6600, roughness: 0.4 });
+    const leftWing = new THREE.Mesh(wingGeo, matOrange);
+    leftWing.position.set(-0.1, 0, 0.5);
+    leftWing.castShadow = true;
+    const rightWing = new THREE.Mesh(wingGeo, matOrange);
+    rightWing.position.set(-0.1, 0, -0.5);
+    rightWing.castShadow = true;
+    birdGroup.add(leftWing, rightWing);
+    scene.add(birdGroup);
+
+    // Obstacles (InstancedMesh)
+    const pipeCount = 12; 
+    const pipeGeo = new THREE.CylinderGeometry(0.8, 0.8, 1, 24);
+    const pipeMat = new THREE.MeshStandardMaterial({ color: 0x2ecc71, roughness: 0.6, flatShading: true });
+    const pipes = new THREE.InstancedMesh(pipeGeo, pipeMat, pipeCount);
+    pipes.castShadow = true;
+    pipes.receiveShadow = true;
+    scene.add(pipes);
+
+    // Environment (InstancedMesh)
+    const cloudCount = 15;
+    const cloudGeo = new THREE.IcosahedronGeometry(1.2, 1);
+    const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
+    const clouds = new THREE.InstancedMesh(cloudGeo, cloudMat, cloudCount);
+    scene.add(clouds);
+
+    const dummy = new THREE.Object3D();
+    const cloudData = [];
+    for (let i = 0; i < cloudCount; i++) {
+        const x = Math.random() * 80 - 40;
+        const y = Math.random() * 8 + 4;
+        const z = Math.random() * -15 - 5;
+        const s = Math.random() * 1.5 + 0.5;
+        cloudData.push({ x, y, z, s, speed: Math.random() * 3 + 1 });
+        dummy.position.set(x, y, z);
+        dummy.scale.set(s, s*0.6, s);
+        dummy.updateMatrix();
+        clouds.setMatrixAt(i, dummy.matrix);
+    }
+
+    // State Machine & Data
+    let state = 'start'; 
+    let score = 0;
+    let bestScore = 0;
+    try { bestScore = parseInt(localStorage.getItem('f3d_best')) || 0; } catch (e) { bestScore = 0; }
+
+    let birdY = 0;
+    let birdV = 0;
+    const gravity = -38;
+    const flapPower = 14;
+    const pipeSpeed = 8.5;
+    const pipeGap = 3.8;
+    const pipeSpacing = 9;
+    const pipeData = []; 
+
+    function resetPipes() {
+        for(let i=0; i<pipeCount/2; i++) {
+            pipeData[i] = { x: 20 + i * pipeSpacing, y: (Math.random() - 0.5) * 6 };
+        }
+    }
+    resetPipes();
+
+    function updatePipes(dt) {
+        for(let i=0; i<pipeCount/2; i++) {
+            const pd = pipeData[i];
+            if (state === 'playing') {
+                pd.x -= pipeSpeed * dt;
+                if (pd.x < -12) {
+                    pd.x += (pipeCount/2) * pipeSpacing;
+                    pd.y = (Math.random() - 0.5) * 6;
+                    score++;
+                    document.getElementById('scoreDisplay').innerText = score;
+                }
+            }
+            dummy.position.set(pd.x, pd.y - pipeGap/2 - 15, 0);
+            dummy.scale.set(1, 30, 1);
+            dummy.updateMatrix();
+            pipes.setMatrixAt(i*2, dummy.matrix);
+            
+            dummy.position.set(pd.x, pd.y + pipeGap/2 + 15, 0);
+            dummy.scale.set(1, 30, 1);
+            dummy.updateMatrix();
+            pipes.setMatrixAt(i*2+1, dummy.matrix);
+        }
+        pipes.instanceMatrix.needsUpdate = true;
+    }
+
+    function flap() {
+        if (state === 'start') {
+            state = 'playing';
+            document.getElementById('startScreen').classList.remove('active');
+            document.getElementById('scoreDisplay').style.display = 'block';
+            score = 0;
+            document.getElementById('scoreDisplay').innerText = score;
+            resetPipes();
+            birdY = 0;
+            birdV = flapPower;
+        } else if (state === 'playing') {
+            birdV = flapPower;
+        } else if (state === 'gameover') {
+            document.getElementById('gameOverScreen').classList.remove('active');
+            state = 'start';
+            flap(); 
+        }
+    }
+
+    function die() {
+        state = 'gameover';
+        if (score > bestScore) {
+            bestScore = score;
+            try { localStorage.setItem('f3d_best', bestScore); } catch(e){}
+        }
+        document.getElementById('gameOverScreen').classList.add('active');
+        document.getElementById('finalScore').innerHTML = `Score: ${score}<br>Best: ${bestScore}`;
+        document.getElementById('scoreDisplay').style.display = 'none';
+    }
+
+    // Input Aggregation
+    const handleInput = (e) => {
+        if(e.type !== 'keydown') e.preventDefault();
+        if(e.target.tagName !== 'BUTTON') flap();
+    };
+    canvas.addEventListener('pointerdown', handleInput, { passive: false });
+    window.addEventListener('keydown', (e) => { if (e.code === 'Space') flap(); });
+    document.getElementById('startBtn').addEventListener('pointerdown', handleInput);
+    document.getElementById('restartBtn').addEventListener('pointerdown', handleInput);
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Main Deterministic Loop
+    let lastTime = performance.now();
+    let accumulator = 0;
+    const dt = 1/60;
+
+    function animate(currentTime) {
+        requestAnimationFrame(animate);
+        
+        let frameTime = (currentTime - lastTime) / 1000;
+        if (frameTime > 0.25) frameTime = 0.25; 
+        lastTime = currentTime;
+        accumulator += frameTime;
+        
+        while(accumulator >= dt) {
+            if (state === 'playing') {
+                birdV += gravity * dt;
+                birdY += birdV * dt;
+                
+                if (birdY < -8 || birdY > 8) die();
+                
+                for(let i=0; i<pipeCount/2; i++) {
+                    const pd = pipeData[i];
+                    if (Math.abs(pd.x) < 1.3) { 
+                        if (birdY > pd.y + pipeGap/2 - 0.4 || birdY < pd.y - pipeGap/2 + 0.4) die();
+                    }
+                }
+            }
+            accumulator -= dt;
+        }
+        
+        if (state === 'playing' || state === 'start') {
+            birdGroup.position.y = birdY;
+            birdGroup.rotation.z = Math.min(Math.max(birdV * 0.05, -0.6), 0.6);
+            const flapAnim = Math.sin(currentTime * 0.03) * 0.5;
+            leftWing.rotation.x = flapAnim;
+            rightWing.rotation.x = -flapAnim;
+        } else if (state === 'gameover') {
+            birdGroup.position.y -= 15 * frameTime;
+            birdGroup.rotation.z -= 8 * frameTime;
+        }
+        
+        for(let i=0; i<cloudCount; i++) {
+            const cd = cloudData[i];
+            if(state !== 'gameover') cd.x -= cd.speed * frameTime;
+            if(cd.x < -30) cd.x = 50;
+            dummy.position.set(cd.x, cd.y, cd.z);
+            dummy.scale.set(cd.s, cd.s*0.6, cd.s);
+            dummy.updateMatrix();
+            clouds.setMatrixAt(i, dummy.matrix);
+        }
+        clouds.instanceMatrix.needsUpdate = true;
+        
+        updatePipes(frameTime); // Smooth rendering interpretation
+        renderer.render(scene, camera);
+    }
+    animate(performance.now());
+    </script>
+</body>
+</html>
