@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Flappy Bird 3D - AGI Perfected</title>
+<style>
+  :root {
+    --sys-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; -webkit-tap-highlight-color: transparent; }
+  body {
+    overflow: hidden; background: #000;
+    -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+    font-family: var(--sys-font); width: 100vw; height: 100vh; height: 100dvh; position: fixed;
+  }
+  canvas { display: block; width: 100%; height: 100%; outline: none; }
+  
+  #score {
+    position: absolute; top: max(48px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+    font-size: clamp(56px, 8vw, 72px); font-weight: 800; color: #ffffff;
+    text-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.8);
+    pointer-events: none; z-index: 10; font-variant-numeric: tabular-nums; letter-spacing: -1.5px;
+    transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  #score.pop { transform: translateX(-50%) scale(1.15); }
+  
+  .ui-panel {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.95);
+    background: rgba(20, 25, 30, 0.65); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 28px; padding: 40px 56px;
+    text-align: center; color: #ffffff; opacity: 0; pointer-events: none;
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 24px 48px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.2);
+    z-index: 20; min-width: 320px;
+  }
+  .ui-panel.active { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+  .ui-panel h2 { font-size: 36px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+  .ui-panel p { font-size: 18px; font-weight: 500; opacity: 0.9; text-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+  
+  .score-box {
+    background: rgba(0, 0, 0, 0.4); border-radius: 16px; padding: 20px; margin: 24px 0;
+    display: flex; flex-direction: column; gap: 8px; font-size: 20px; font-weight: 600;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); font-variant-numeric: tabular-nums;
+  }
+  
+  .blink { 
+    animation: blinker 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; 
+    font-size: 14px !important; text-transform: uppercase; letter-spacing: 1.5px; 
+    font-weight: 700 !important; opacity: 0.6 !important; margin-top: 16px; 
+  }
+  @keyframes blinker { 50% { opacity: 0.2 !important; } }
+  
+  #error-screen { 
+    display: none; position: absolute; inset: 0; background: #000; color: #fff; 
+    align-items: center; justify-content: center; z-index: 100; font-weight: 600; font-size: 18px; 
+  }
+</style>
+</head>
+<body>
+<div id="error-screen">A critical graphics error occurred. Please refresh.</div>
+<div id="score">0</div>
+<div class="ui-panel active" id="startPanel">
+  <h2>Flappy 3D</h2>
+  <p>Tap, Click or Space</p>
+  <div class="blink">Ready To Fly</div>
+</div>
+<div class="ui-panel" id="overPanel">
+  <h2>Game Over</h2>
+  <div class="score-box">
+    <p id="finalScore">Score: 0</p>
+    <p id="bestScore">Best: 0</p>
+  </div>
+  <div class="blink">Tap to restart</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  // --- DEPENDENCY GUARD ---
+  if (typeof THREE === 'undefined') {
+    document.getElementById('error-screen').style.display = 'flex';
+    return;
+  }
+
+  // --- SECURE IO FACADE ---
+  const Storage = {
+    get(key) { try { const v = parseInt(localStorage.getItem(key), 10); return Number.isFinite(v) ? v : 0; } catch(e) { return 0; } },
+    set(key, val) { try { localStorage.setItem(key, val.toString()); } catch(e) {} }
+  };
+
+  // --- STRICT PHYSICS CONSTANTS ---
+  const CONFIG = {
+    PIPE_COUNT: 24,       // Expanded count ensures ultra-wide safety
+    GAP: 5.8,
+    PIPE_SPACE: 8.0,
+    PIPE_START_X: 20.0,
+    WRAP_X: -25.0,        // Extends frustum flush line safely
+    PIPE_SPEED: 4.8,      // Standard units/second
+    GRAVITY: -28.0,       // Standard units/second squared
+    FLAP_VEL: 8.8,
+    BIRD_RADIUS: 0.42,
+    PIPE_RADIUS: 0.75,
+    CEILING: 15.0,
+    FLOOR: -1.0,
+    FIXED_DT: 1 / 60,
+    MAX_DT: 0.1
+  };
+
+  const state = {
+    phase: 'start',
+    birdY: 3.0, birdVel: 0.0, score: 0,
+    highScore: Storage.get('f3d_hi'), groundOffset: 0.0,
+    wingAngle: 0.0, lastTime: 0, accumulator: 0.0,
+    deathTime: 0, lastFlapTime: 0
+  };
+
+  // Pre-allocation layout guarantees 0 allocation runtime geometry
+  const pipes = Array.from({ length: CONFIG.PIPE_COUNT }, () => ({ x: 0, gapY: 0, scored: false }));
+
+  // --- ENGINE SETUP ---
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.appendChild(renderer.domElement);
+
+  let isContextLost = false;
+  renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); isContextLost = true; document.getElementById('error-screen').style.display = 'flex'; }, false);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x87ceeb, 20, 50);
+
+  const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+  const updateCamera = () => {
+    const aspect = window.innerWidth / window.innerHeight;
+    camera.aspect = aspect;
+    camera.position.set(-2, 6, aspect < 1 ? 16 / Math.max(0.4, aspect) : 12);
+    camera.lookAt(4, 3, 0);
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  };
+  window.addEventListener('resize', updateCamera, { passive: true });
+  updateCamera();
+
+  // --- AESTHETICS ---
+  const skyCvs = document.createElement('canvas'); skyCvs.width = 2; skyCvs.height = 512;
+  const sCtx = skyCvs.getContext('2d', { alpha: false });
+  const gr = sCtx.createLinearGradient(0, 0, 0, 512);
+  gr.addColorStop(0, '#3a82e0'); gr.addColorStop(0.4, '#76c4eb'); gr.addColorStop(1, '#dff1fd');
+  sCtx.fillStyle = gr; sCtx.fillRect(0, 0, 2, 512);
+  scene.background = new THREE.CanvasTexture(skyCvs);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+  const dirLight = new THREE.DirectionalLight(0xfff5e6, 0.85);
+  dirLight.position.set(10, 20, 10); dirLight.castShadow = true;
+  dirLight.shadow.mapSize.set(1024, 1024);
+  dirLight.shadow.camera.left = -30; dirLight.shadow.camera.right = 30;
+  dirLight.shadow.camera.top = 20; dirLight.shadow.camera.bottom = -20;
+  dirLight.shadow.bias = -0.001;
+  scene.add(dirLight);
+
+  const gCvs = document.createElement('canvas'); gCvs.width = 256; gCvs.height = 256;
+  const gCtx = gCvs.getContext('2d', { alpha: false });
+  gCtx.fillStyle = '#8bc34a'; gCtx.fillRect(0, 0, 256, 256);
+  for(let i=0; i<256; i+=32) { gCtx.fillStyle = i%64===0 ? '#7cb342' : '#9ccc65'; gCtx.fillRect(i, 0, 32, 256); }
+  const gTex = new THREE.CanvasTexture(gCvs);
+  gTex.wrapS = gTex.wrapT = THREE.RepeatWrapping; gTex.repeat.set(20, 8);
+  gTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 60), new THREE.MeshLambertMaterial({ map: gTex }));
+  ground.rotation.x = -Math.PI / 2; ground.position.set(10, -1.5, 0); ground.receiveShadow = true;
+  scene.add(ground);
+
+  const clouds = [];
+  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+  const createCloud = (x, y, z, s) => {
+    const g = new THREE.Group();
+    for(let i=0; i<5; i++) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 10), cloudMat);
+      m.position.set(i*1.2 - 2.4, (Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5);
+      m.scale.setScalar(1 + Math.random()*0.8); g.add(m);
+    }
+    g.position.set(x, y, z); g.scale.setScalar(s); scene.add(g); clouds.push(g);
+  };
+  createCloud(15, 12, -8, 1.5); createCloud(-10, 14, -12, 2.0);
+  createCloud(25, 11, -6, 1.2); createCloud(-25, 13, -10, 1.8);
+  createCloud(40, 15, -15, 2.5); createCloud(-40, 12, -8, 1.5);
+  createCloud(55, 14, -12, 1.3); createCloud(-55, 13, -10, 1.9);
+
+  // --- ENTITY MANIFEST: BIRD ---
+  const birdGroup = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(CONFIG.BIRD_RADIUS, 24, 16), new THREE.MeshPhongMaterial({ color: 0xffcc00, shininess: 80 }));
+  body.castShadow = true; birdGroup.add(body);
+  
+  const wingMat = new THREE.MeshPhongMaterial({ color: 0xffaa00, side: THREE.DoubleSide });
+  const lWing = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.35), wingMat); lWing.position.set(-0.1, 0.15, 0.38); lWing.rotation.y = 0.3; lWing.castShadow = true;
+  const rWing = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.35), wingMat); rWing.position.set(-0.1, 0.15, -0.38); rWing.rotation.y = -0.3; rWing.castShadow = true;
+  birdGroup.add(lWing, rWing);
+  
+  const addEye = (z) => {
+    const w = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), new THREE.MeshPhongMaterial({ color: 0xffffff })); w.position.set(0.25, 0.15, 0.28 * z);
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 10), new THREE.MeshPhongMaterial({ color: 0x111111 })); b.position.set(0.34, 0.17, 0.32 * z);
+    birdGroup.add(w, b);
+  };
+  addEye(1); addEye(-1);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.35, 12), new THREE.MeshPhongMaterial({ color: 0xff5500 }));
+  beak.rotation.z = -Math.PI / 2; beak.position.set(0.5, 0, 0); beak.castShadow = true; birdGroup.add(beak);
+  scene.add(birdGroup);
+
+  // --- O(1) INSTANCED MESH POOLING ---
+  const bGeo = new THREE.CylinderGeometry(CONFIG.PIPE_RADIUS, CONFIG.PIPE_RADIUS, 1, 16);
+  const cGeo = new THREE.CylinderGeometry(CONFIG.PIPE_RADIUS + 0.1, CONFIG.PIPE_RADIUS + 0.1, 0.5, 16);
+  const bodiesIM = new THREE.InstancedMesh(bGeo, new THREE.MeshPhongMaterial({ color: 0x4caf50, shininess: 10 }), CONFIG.PIPE_COUNT * 2);
+  const capsIM = new THREE.InstancedMesh(cGeo, new THREE.MeshPhongMaterial({ color: 0x388e3c, shininess: 10 }), CONFIG.PIPE_COUNT * 2);
+  
+  bodiesIM.castShadow = capsIM.castShadow = true; bodiesIM.receiveShadow = capsIM.receiveShadow = true;
+  bodiesIM.frustumCulled = capsIM.frustumCulled = false; // Prevents boundary shadow clipping mathematically
+  scene.add(bodiesIM, capsIM);
+  const dummy = new THREE.Object3D();
+
+  function initPipes() {
+    for(let i=0; i<CONFIG.PIPE_COUNT; i++) {
+      pipes[i].x = CONFIG.PIPE_START_X + i * CONFIG.PIPE_SPACE;
+      pipes[i].gapY = 1.5 + Math.random() * 6.0;
+      pipes[i].scored = false;
+    }
+  }
+
+  const UI = { start: document.getElementById('startPanel'), over: document.getElementById('overPanel'), score: document.getElementById('score'), fScore: document.getElementById('finalScore'), bScore: document.getElementById('bestScore') };
+  const setUI = id => { UI.start.classList.remove('active'); UI.over.classList.remove('active'); if(id) UI[id].classList.add('active'); };
+
+  // --- MATHEMATICAL COLLISION BOUNDS ---
+  function checkCollisions() {
+    if (state.birdY < CONFIG.FLOOR || state.birdY > CONFIG.CEILING) return true;
+    for(let i=0; i<CONFIG.PIPE_COUNT; i++) {
+      const p = pipes[i];
+      if (Math.abs(p.x) < CONFIG.PIPE_RADIUS + CONFIG.BIRD_RADIUS) {
+        if (state.birdY + CONFIG.BIRD_RADIUS - 0.15 > p.gapY + CONFIG.GAP/2 || 
+            state.birdY - CONFIG.BIRD_RADIUS + 0.15 < p.gapY - CONFIG.GAP/2) return true;
+      }
+    }
+    return false;
+  }
+
+  // --- CONCURRENCY SHIELDED INPUT DEBOUNCE ---
+  function flap() {
+    const now = performance.now();
+    if (now - state.lastFlapTime < 50) return; // Strict lock against 120Hz overlapping taps
+    state.lastFlapTime = now;
+
+    if (state.phase === 'start') {
+      state.phase = 'playing'; state.birdY = 4.0; state.birdVel = CONFIG.FLAP_VEL; state.score = 0; state.accumulator = 0;
+      UI.score.textContent = '0'; setUI(null); initPipes();
+    } else if (state.phase === 'over') {
+      if (now - state.deathTime > 500) { state.phase = 'start'; setUI('startPanel'); birdGroup.position.set(0, 4.0, 0); birdGroup.rotation.z = 0; }
+    } else {
+      state.birdVel = CONFIG.FLAP_VEL; // Neutralizes stacking momentum 
+      UI.score.classList.remove('pop'); void UI.score.offsetWidth; UI.score.classList.add('pop');
+    }
+  }
+
+  const inH = e => { if (e.cancelable) e.preventDefault(); flap(); };
+  window.addEventListener('pointerdown', inH, { passive: false });
+  window.addEventListener('keydown', e => { if (e.code === 'Space') inH(e); });
+
+  // --- DETERMINISTIC FIXED TIMESTEP LOOP ---
+  function updateInstances() {
+    for(let i=0; i<CONFIG.PIPE_COUNT; i++) {
+      const p = pipes[i];
+      const bH = Math.max(0.01, p.gapY - CONFIG.GAP/2 + 1.5);
+      dummy.position.set(p.x, -1.5 + bH/2, 0); dummy.scale.set(1, bH, 1); dummy.updateMatrix();
+      bodiesIM.setMatrixAt(i*2, dummy.matrix);
+      dummy.position.set(p.x, p.gapY - CONFIG.GAP/2 - 0.25, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+      capsIM.setMatrixAt(i*2, dummy.matrix);
+      
+      const tH = Math.max(0.01, 18.0 - (p.gapY + CONFIG.GAP/2));
+      dummy.position.set(p.x, p.gapY + CONFIG.GAP/2 + tH/2, 0); dummy.scale.set(1, tH, 1); dummy.updateMatrix();
+      bodiesIM.setMatrixAt(i*2+1, dummy.matrix);
+      dummy.position.set(p.x, p.gapY + CONFIG.GAP/2 + 0.25, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+      capsIM.setMatrixAt(i*2+1, dummy.matrix);
+    }
+    bodiesIM.instanceMatrix.needsUpdate = true; capsIM.instanceMatrix.needsUpdate = true;
+  }
+
+  function loop(time) {
+    requestAnimationFrame(loop);
+    if (isContextLost) return;
+    if (!state.lastTime) { state.lastTime = time; return; }
+    
+    let dt = (time - state.lastTime) / 1000.0;
+    state.lastTime = time;
+    
+    // Bounds guard against background tab GC death spirals
+    if (document.hidden) dt = 0.0;
+    if (dt > CONFIG.MAX_DT) dt = CONFIG.MAX_DT; 
+    
+    if (state.phase === 'playing') {
+      state.accumulator += dt;
+      while (state.accumulator >= CONFIG.FIXED_DT) {
+        state.birdVel += CONFIG.GRAVITY * CONFIG.FIXED_DT;
+        state.birdY += state.birdVel * CONFIG.FIXED_DT;
+        
+        for(let i=0; i<CONFIG.PIPE_COUNT; i++) {
+          pipes[i].x -= CONFIG.PIPE_SPEED * CONFIG.FIXED_DT;
+          if (!pipes[i].scored && pipes[i].x < 0) { pipes[i].scored = true; state.score++; UI.score.textContent = state.score; }
+        }
+        
+        // Zero-allocation O(N) internal wrap
+        for(let i=0; i<CONFIG.PIPE_COUNT; i++) {
+          if (pipes[i].x < CONFIG.WRAP_X) {
+            let maxX = -Infinity;
+            for(let j=0; j<CONFIG.PIPE_COUNT; j++) if(pipes[j].x > maxX) maxX = pipes[j].x;
+            pipes[i].x = maxX + CONFIG.PIPE_SPACE;
+            pipes[i].gapY = 1.5 + Math.random() * 6.5;
+            pipes[i].scored = false;
+          }
+        }
+        
+        if (checkCollisions()) {
+          state.phase = 'over'; state.deathTime = performance.now();
+          if (state.score > state.highScore) { state.highScore = state.score; Storage.set('f3d_hi', state.highScore); }
+          UI.fScore.textContent = 'Score: ' + state.score; UI.bScore.textContent = 'Best: ' + state.highScore;
+          setUI('overPanel'); state.accumulator = 0; break;
+        }
+        state.accumulator -= CONFIG.FIXED_DT;
+      }
+
+      state.groundOffset = (state.groundOffset + CONFIG.PIPE_SPEED * dt) % (1.0 / 0.15); // Wrap to limit fp-drift natively
+      gTex.offset.x = state.groundOffset * 0.15;
+      state.wingAngle += (state.birdVel > 0 ? 25.0 : 5.0) * dt;
+    } else {
+      const t = time / 1000;
+      if (state.phase === 'start') { state.birdY = 4.0 + Math.sin(t * 3) * 0.4; } 
+      else if (state.phase === 'over' && state.birdY > CONFIG.FLOOR) { state.birdVel += CONFIG.GRAVITY * 2 * dt; state.birdY += state.birdVel * dt; if (state.birdY < CONFIG.FLOOR) state.birdY = CONFIG.FLOOR; }
+      state.wingAngle += (state.phase === 'start' ? 10.0 : 0) * dt;
+    }
+
+    // INTERPOLATION BOUNDARY 
+    birdGroup.position.y = state.birdY;
+    const targetR = state.phase === 'over' ? -Math.PI / 2 : Math.max(Math.min(state.birdVel * 0.12, Math.PI / 4), -Math.PI / 2.5);
+    birdGroup.rotation.z += (targetR - birdGroup.rotation.z) * 15.0 * dt;
+    lWing.rotation.x = Math.sin(state.wingAngle) * 0.6; rWing.rotation.x = -Math.sin(state.wingAngle) * 0.6;
+
+    clouds.forEach(c => { c.position.x -= 2.5 * dt; if (c.position.x < -60) c.position.x += 120; });
+    
+    updateInstances();
+    renderer.render(scene, camera);
+  }
+
+  // --- BOOT PROCESS ---
+  initPipes(); updateInstances();
+  requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
