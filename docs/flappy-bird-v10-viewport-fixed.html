@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#87ceeb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Flappy 3D: Omni-Compute Edition</title>
+<style>
+    /* [AESTHETIC-1] System Typographic Baseline & Mathematical Viewport Alignment */
+    :root {
+        --sys-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        --safe-top: env(safe-area-inset-top, 20px);
+        --safe-bottom: env(safe-area-inset-bottom, 20px);
+        --glass-bg: rgba(20, 25, 35, 0.45);
+        --glass-border: rgba(255, 255, 255, 0.15);
+        --glass-shadow: 0 24px 48px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+        overflow: hidden;
+        background: #87ceeb;
+        touch-action: none;
+        overscroll-behavior: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        font-family: var(--sys-font);
+        -webkit-font-smoothing: antialiased;
+        width: 100vw; height: 100dvh; /* Dynamic Viewport compliance */
+    }
+
+    canvas {
+        display: block; width: 100%; height: 100%;
+        position: absolute; z-index: 1; outline: none;
+    }
+
+    /* GLASSMORPHISM UI - Apple HIG AAA Contrast Constraints */
+    .ui-layer {
+        position: absolute; inset: 0; z-index: 10;
+        pointer-events: none;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+
+    .glass-panel {
+        background: var(--glass-bg);
+        backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+        border: 1px solid var(--glass-border);
+        border-radius: 32px;
+        padding: 40px 48px;
+        text-align: center; color: #ffffff;
+        box-shadow: var(--glass-shadow);
+        transform: scale(0.95); opacity: 0; visibility: hidden;
+        transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+        pointer-events: auto; min-width: 310px;
+    }
+
+    .glass-panel.active { transform: scale(1); opacity: 1; visibility: visible; }
+
+    .glass-panel h2 {
+        font-size: 36px; font-weight: 800; letter-spacing: -0.8px;
+        margin-bottom: 12px; text-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+
+    .glass-panel p { font-size: 17px; font-weight: 500; opacity: 0.9; line-height: 1.5; }
+
+    .stats-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+        margin-top: 24px; background: rgba(0, 0, 0, 0.25);
+        border-radius: 20px; padding: 18px 24px;
+        box-shadow: inset 0 2px 8px rgba(0,0,0,0.2);
+    }
+    
+    .stat-col { display: flex; flex-direction: column; align-items: center; }
+    .stat-label { font-size: 13px; text-transform: uppercase; opacity: 0.7; font-weight: 700; letter-spacing: 0.5px; }
+    .stat-val { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 4px; }
+    .stat-val.gold { color: #FFCA28; }
+
+    .hint-text {
+        margin-top: 24px; font-size: 14px; font-weight: 700; opacity: 0.6;
+        text-transform: uppercase; letter-spacing: 1.2px;
+        animation: pulse 2s infinite ease-in-out;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.9; } }
+
+    #score-hud {
+        position: absolute; top: calc(var(--safe-top) + 24px); left: 50%;
+        transform: translateX(-50%); font-size: 68px; font-weight: 900;
+        color: #ffffff; text-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.5);
+        pointer-events: none; z-index: 20; opacity: 0;
+        transition: opacity 0.3s ease, transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        font-variant-numeric: tabular-nums; letter-spacing: -2px;
+    }
+
+    .score-pop { transform: translateX(-50%) scale(1.15) !important; }
+
+    #boot-error { display: none; color: white; margin: auto; padding: 30px; text-align: center; font-size: 18px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div id="score-hud">0</div>
+
+<div class="ui-layer">
+    <div class="glass-panel active" id="ui-start">
+        <h2>Flappy 3D</h2>
+        <p>Omni-Compute Edition</p>
+        <div class="hint-text">Tap anywhere to fly</div>
+    </div>
+    
+    <div class="glass-panel" id="ui-over">
+        <h2>Flight Grounded</h2>
+        <div class="stats-grid">
+            <div class="stat-col"><span class="stat-label">Score</span><span class="stat-val" id="val-score">0</span></div>
+            <div class="stat-col"><span class="stat-label">Best</span><span class="stat-val gold" id="val-best">0</span></div>
+        </div>
+        <div class="hint-text">Tap to restart</div>
+    </div>
+
+    <div id="boot-error">
+        <h2>System Fault</h2>
+        <p>WebGL Engine Failed to Load. Please verify network or extensions.</p>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+'use strict';
+
+(function OmniComputeHarness() {
+    // 🛡️ [BOOT-1] Dependency Injection & Fallback Protection
+    if (typeof THREE === 'undefined') {
+        document.getElementById('ui-start').style.display = 'none';
+        document.getElementById('boot-error').style.display = 'block';
+        throw new Error("[BOOT] Dependency missing. Halting loop securely.");
+    }
+
+    // 🛡️ [SEC-1] Safe Storage Adapter (Incognito/Quota Mitigation)
+    const SafeStore = (() => {
+        const key = 'flappy3d_omni_hi';
+        const fallback = new Map();
+        return {
+            get: () => { try { return parseInt(localStorage.getItem(key), 10) || fallback.get(key) || 0; } catch (e) { return fallback.get(key) || 0; } },
+            set: (val) => { fallback.set(key, val); try { localStorage.setItem(key, val.toString()); } catch (e) {} }
+        };
+    })();
+
+    // 🎵 Procedural Haptic Audio Subsystem (Zero External Assets)
+    const AudioEngine = (() => {
+        let ctx = null, lastFlap = 0;
+        const init = () => { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') ctx.resume(); };
+        const play = (freq, type, dur, vol, slide = 0) => {
+            if (!ctx) return;
+            try {
+                const osc = ctx.createOscillator(), gain = ctx.createGain();
+                osc.type = type; osc.frequency.setValueAtTime(freq, ctx.currentTime);
+                if (slide) osc.frequency.exponentialRampToValueAtTime(slide, ctx.currentTime + dur);
+                gain.gain.setValueAtTime(vol, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.start(); osc.stop(ctx.currentTime + dur);
+            } catch (e) { /* Absorb channel overflow */ }
+        };
+        return {
+            init,
+            flap: () => {
+                const now = performance.now();
+                if (now - lastFlap < 40) return; // Strict Audio Channel Debounce
+                lastFlap = now;
+                play(300, 'sine', 0.12, 0.12, 450);
+            },
+            score: () => { play(880, 'sine', 0.1, 0.08); setTimeout(() => play(1320, 'sine', 0.15, 0.08), 80); },
+            crash: () => { play(150, 'sawtooth', 0.35, 0.15, 50); setTimeout(() => play(80, 'square', 0.4, 0.2, 20), 40); }
+        };
+    })();
+
+    // 🧠 Core Mathematical Bounds & Logic Constants
+    const C = {
+        PHYSICS_STEP: 1 / 60, // Fixed-step accumulator (16.66ms integrations)
+        MAX_DT: 0.25,         // Hard temporal boundary (250ms max physics catchup)
+        GRAVITY: -26.0,
+        FLAP_VELOCITY: 8.8,
+        MAX_FALL: -20.0,
+        PIPE_SPEED: 6.0,
+        GAP_SIZE: 5.6,
+        PIPE_SPACING: 8.0,
+        PIPE_COUNT: 16,
+        PIPE_RADIUS: 0.75,
+        BIRD_RADIUS: 0.42,
+        BIRD_SPAWN_Y: 4.5,
+        GROUND_Y: -1.5,
+        CEILING_Y: 15.5,
+        LOCKOUT_MS: 500
+    };
+
+    const STATE = {
+        phase: 'start', // 'start' | 'playing' | 'over'
+        birdY: C.BIRD_SPAWN_Y, birdVel: 0.0,
+        score: 0, best: SafeStore.get(),
+        groundOffset: 0.0, wingAngle: 0.0,
+        pipes: [], lockoutTime: 0
+    };
+
+    // ============================================================================
+    // 2. RENDERER & SCENE ALLOCATION
+    // ============================================================================
+    const canvas = document.createElement('canvas');
+    document.body.insertBefore(canvas, document.body.firstChild);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // Restrict 4k VRAM explosion
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+
+    // WebGL Context Panic Mitigation
+    renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); STATE.phase = 'over'; }, false);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2('#dcf0fa', 0.012);
+
+    const aspect = window.innerWidth / window.innerHeight;
+    const camera = new THREE.PerspectiveCamera(aspect < 1 ? 60 + (1 - aspect) * 40 : 50, aspect, 0.1, 150);
+    camera.position.set(-2.5, 6, 14);
+    camera.lookAt(4, 3.5, 0);
+
+    // ============================================================================
+    // 3. ENVIRONMENT & LIGHTING
+    // ============================================================================
+    // VRAM-Optimized CSS Sky Gradient pushed into Canvas Texture
+    const skyCanvas = document.createElement('canvas'); skyCanvas.width = 2; skyCanvas.height = 512;
+    const ctxSky = skyCanvas.getContext('2d');
+    const grad = ctxSky.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, '#4a90d9'); grad.addColorStop(0.5, '#87ceeb'); grad.addColorStop(1, '#e8f4fd');
+    ctxSky.fillStyle = grad; ctxSky.fillRect(0, 0, 2, 512);
+    const skyTex = new THREE.CanvasTexture(skyCanvas);
+    skyTex.encoding = THREE.sRGBEncoding;
+    scene.background = skyTex;
+
+    // Apple-Grade Hemisphere Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dirLight = new THREE.DirectionalLight(0xfffdf5, 1.25);
+    dirLight.position.set(6, 20, 12);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.set(1024, 1024);
+    dirLight.shadow.camera.left = -12; dirLight.shadow.camera.right = 20;
+    dirLight.shadow.camera.top = 15; dirLight.shadow.camera.bottom = -5;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    const rimLight = new THREE.DirectionalLight(0x87ceeb, 0.6);
+    rimLight.position.set(-5, -2, -10);
+    scene.add(rimLight);
+
+    // Parallax Ground
+    const stripeTexCanvas = document.createElement('canvas'); stripeTexCanvas.width = 256; stripeTexCanvas.height = 256;
+    const stCtx = stripeTexCanvas.getContext('2d');
+    stCtx.fillStyle = '#8bc34a'; stCtx.fillRect(0, 0, 256, 256);
+    stCtx.fillStyle = '#7cb342'; for(let i=0; i<256; i+=64) stCtx.fillRect(i, 0, 32, 256);
+    const groundTex = new THREE.CanvasTexture(stripeTexCanvas);
+    groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping; groundTex.repeat.set(16, 6);
+    groundTex.encoding = THREE.sRGBEncoding;
+    
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 40), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.9 }));
+    ground.rotation.x = -Math.PI / 2; ground.position.set(10, C.GROUND_Y, 0);
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // ============================================================================
+    // 4. ENTITY ALLOCATION (ZERO-GC INSTANCING)
+    // ============================================================================
+    // High-Fidelity Physical Bird
+    const birdGroup = new THREE.Group();
+    const bodyMat = new THREE.MeshPhysicalMaterial({ color: 0xffd700, roughness: 0.25, metalness: 0.1, clearcoat: 0.6 });
+    const birdMesh = new THREE.Mesh(new THREE.SphereGeometry(C.BIRD_RADIUS, 32, 24), bodyMat);
+    birdMesh.castShadow = true; birdGroup.add(birdMesh);
+
+    const wingMat = new THREE.MeshPhysicalMaterial({ color: 0xffaa00, side: THREE.DoubleSide, roughness: 0.4 });
+    const leftWing = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.35), wingMat); leftWing.position.set(-0.1, 0.12, 0.36); leftWing.rotation.y = 0.3; leftWing.castShadow = true;
+    const rightWing = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.35), wingMat); rightWing.position.set(-0.1, 0.12, -0.36); rightWing.rotation.y = -0.3; rightWing.castShadow = true;
+    birdGroup.add(leftWing, rightWing);
+
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 });
+    const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), eyeMat); eyeL.position.set(0.24, 0.16, 0.24);
+    const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), eyeMat); eyeR.position.set(0.24, 0.16, -0.24);
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.38, 16), new THREE.MeshPhysicalMaterial({ color: 0xff4400, clearcoat: 0.3 }));
+    beak.rotation.z = -Math.PI / 2; beak.position.set(0.5, 0, 0); beak.castShadow = true;
+    birdGroup.add(eyeL, eyeR, beak);
+    scene.add(birdGroup);
+
+    // O(1) Instanced Pipes (Mathematically mapped via strict buffers)
+    const pipeMat = new THREE.MeshStandardMaterial({ color: 0x388e3c, roughness: 0.6, metalness: 0.05 });
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.7 });
+    const pipeBodies = new THREE.InstancedMesh(new THREE.CylinderGeometry(C.PIPE_RADIUS, C.PIPE_RADIUS, 1, 24), pipeMat, C.PIPE_COUNT * 2);
+    const pipeCaps = new THREE.InstancedMesh(new THREE.CylinderGeometry(C.PIPE_RADIUS + 0.1, C.PIPE_RADIUS + 0.1, 0.4, 24), capMat, C.PIPE_COUNT * 2);
+    pipeBodies.castShadow = pipeBodies.receiveShadow = true; pipeCaps.castShadow = pipeCaps.receiveShadow = true;
+    scene.add(pipeBodies, pipeCaps);
+
+    const initPipes = () => {
+        STATE.pipes.length = 0; // Prevent GC allocation block
+        for(let i=0; i<C.PIPE_COUNT; i++) {
+            STATE.pipes.push({ x: C.PIPE_START_X + i * C.PIPE_SPACING, gapY: 2.5 + Math.random() * 5.5, scored: false });
+        }
+    };
+
+    const dummy = new THREE.Object3D(); // Pre-allocated transformation matrix
+    const updateInstancedPipes = () => {
+        for(let i=0; i<C.PIPE_COUNT; i++) {
+            const p = STATE.pipes[i];
+            
+            // Bottom Pipe Generation
+            const bH = Math.max(0.1, (p.gapY - C.GAP_SIZE/2) - C.GROUND_Y);
+            dummy.position.set(p.x, C.GROUND_Y + bH/2, 0); dummy.scale.set(1, bH, 1); dummy.updateMatrix();
+            pipeBodies.setMatrixAt(i*2, dummy.matrix);
+            dummy.position.set(p.x, p.gapY - C.GAP_SIZE/2 - 0.25, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+            pipeCaps.setMatrixAt(i*2, dummy.matrix);
+
+            // Top Pipe Generation
+            const tH = Math.max(0.1, C.CEILING_Y - (p.gapY + C.GAP_SIZE/2));
+            dummy.position.set(p.x, (p.gapY + C.GAP_SIZE/2) + tH/2, 0); dummy.scale.set(1, tH, 1); dummy.updateMatrix();
+            pipeBodies.setMatrixAt(i*2+1, dummy.matrix);
+            dummy.position.set(p.x, p.gapY + C.GAP_SIZE/2 + 0.25, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+            pipeCaps.setMatrixAt(i*2+1, dummy.matrix);
+        }
+        pipeBodies.instanceMatrix.needsUpdate = true;
+        pipeCaps.instanceMatrix.needsUpdate = true;
+    };
+
+    // ============================================================================
+    // 5. INPUT, FSM ORCHESTRATION & STATE
+    // ============================================================================
+    const domScore = document.getElementById('score-hud');
+    const domStart = document.getElementById('ui-start');
+    const domOver = document.getElementById('ui-over');
+    
+    const triggerFlap = (e) => {
+        if(e && e.cancelable) e.preventDefault();
+        AudioEngine.init();
+        
+        const now = performance.now();
+        if (STATE.phase === 'start') {
+            STATE.phase = 'playing';
+            STATE.birdY = C.BIRD_SPAWN_Y; STATE.birdVel = C.FLAP_VELOCITY; STATE.score = 0;
+            domScore.textContent = '0'; domScore.style.opacity = '1';
+            domStart.classList.remove('active');
+            initPipes(); updateInstancedPipes(); AudioEngine.flap();
+        } else if (STATE.phase === 'playing') {
+            STATE.birdVel = C.FLAP_VELOCITY; // Absolute override (Anti-Macro Velocity Stacking)
+            AudioEngine.flap();
+            domScore.classList.add('score-pop'); setTimeout(() => domScore.classList.remove('score-pop'), 120);
+        } else if (STATE.phase === 'over' && (now - STATE.lockoutTime > C.LOCKOUT_MS)) {
+            STATE.phase = 'start';
+            domOver.classList.remove('active'); domStart.classList.add('active');
+            STATE.birdY = C.BIRD_SPAWN_Y; birdGroup.position.y = STATE.birdY; birdGroup.rotation.z = 0;
+            initPipes(); updateInstancedPipes();
+        }
+    };
+
+    window.addEventListener('pointerdown', triggerFlap, { passive: false });
+    window.addEventListener('keydown', (e) => { if (e.code === 'Space') triggerFlap(e); }, { passive: false });
+
+    // ============================================================================
+    // 6. EXACT MATHEMATICAL COLLISION (Cylinder vs Sphere via Closest Point)
+    // ============================================================================
+    const checkCollisions = () => {
+        // Absolute Ceiling/Floor execution bounds
+        if (STATE.birdY - C.BIRD_RADIUS <= C.GROUND_Y) return true;
+        if (STATE.birdY + C.BIRD_RADIUS >= C.CEILING_Y) { STATE.birdY = C.CEILING_Y - C.BIRD_RADIUS; }
+
+        const r2 = (C.BIRD_RADIUS - 0.05) ** 2; // Strict Leniency boundary offset
+
+        for(let i=0; i<C.PIPE_COUNT; i++) {
+            const p = STATE.pipes[i];
+            
+            // Fast 1D Cartesian AABB Reject (Bird anchored at X=0)
+            if (Math.abs(p.x) > C.PIPE_RADIUS + C.BIRD_RADIUS) continue;
+
+            const topY = p.gapY + C.GAP_SIZE / 2;
+            const btmY = p.gapY - C.GAP_SIZE / 2;
+
+            // Mathematical nearest-point intersection algorithm
+            const cx = Math.max(p.x - C.PIPE_RADIUS, Math.min(0, p.x + C.PIPE_RADIUS));
+
+            // Top Cylinder Intersection
+            const cyTop = Math.max(topY, STATE.birdY); // Cylinder bounded infinitely upwards
+            if ((cx - 0)**2 + (cyTop - STATE.birdY)**2 < r2) return true;
+
+            // Bottom Cylinder Intersection
+            const cyBtm = Math.min(btmY, STATE.birdY); // Cylinder bounded infinitely downwards
+            if ((cx - 0)**2 + (cyBtm - STATE.birdY)**2 < r2) return true;
+        }
+        return false;
+    };
+
+    const executeGameOver = () => {
+        STATE.phase = 'over';
+        STATE.lockoutTime = performance.now();
+        AudioEngine.crash(); domScore.style.opacity = '0';
+        
+        if (STATE.score > STATE.best) { STATE.best = STATE.score; SafeStore.set(STATE.best); }
+        document.getElementById('val-score').textContent = STATE.score;
+        document.getElementById('val-best').textContent = STATE.best;
+        domOver.classList.add('active');
+    };
+
+    // ============================================================================
+    // 7. DETERMINISTIC RENDER LOOP (Decoupled Accumulator)
+    // ============================================================================
+    let lastTime = performance.now(), accumulator = 0;
+
+    const gameLoop = (time) => {
+        requestAnimationFrame(gameLoop);
+        
+        // Strict boundary protection for OS-backgrounding temporal displacement
+        let dt = (time - lastTime) / 1000.0;
+        lastTime = time;
+        if (dt > C.MAX_DT) dt = C.MAX_DT; 
+        
+        accumulator += dt;
+
+        if (STATE.phase === 'playing') {
+            // Fixed Physics Tick strictly bounded to 60hz
+            while (accumulator >= C.PHYSICS_STEP) {
+                STATE.birdVel += C.GRAVITY * C.PHYSICS_STEP;
+                if (STATE.birdVel < C.MAX_FALL) STATE.birdVel = C.MAX_FALL;
+                STATE.birdY += STATE.birdVel * C.PHYSICS_STEP;
+                
+                for(let i=0; i<C.PIPE_COUNT; i++) {
+                    const p = STATE.pipes[i];
+                    p.x -= C.PIPE_SPEED * C.PHYSICS_STEP;
+                    if (!p.scored && p.x < 0) { p.scored = true; STATE.score++; domScore.textContent = STATE.score; AudioEngine.score(); }
+                }
+
+                // O(1) Memory Array Recycling
+                if (STATE.pipes[0].x < -7.0) {
+                    const recycle = STATE.pipes.shift();
+                    recycle.x = STATE.pipes[STATE.pipes.length - 1].x + C.PIPE_SPACING;
+                    recycle.gapY = 2.5 + Math.random() * 5.5; recycle.scored = false;
+                    STATE.pipes.push(recycle);
+                }
+
+                STATE.groundOffset += C.PIPE_SPEED * C.PHYSICS_STEP;
+                if (checkCollisions()) executeGameOver();
+                
+                accumulator -= C.PHYSICS_STEP;
+            }
+
+            // Kinematic Interpolation (Visuals smooth independently of physics)
+            STATE.wingAngle += (STATE.birdVel > 0 ? 18.0 : -8.0) * dt;
+            const flap = Math.sin(STATE.wingAngle) * 0.55;
+            leftWing.rotation.x = flap; rightWing.rotation.x = -flap;
+            
+            const targetRot = Math.max(-Math.PI/2.2, Math.min(Math.PI/4, STATE.birdVel * 0.16));
+            birdGroup.rotation.z = THREE.MathUtils.lerp(birdGroup.rotation.z, targetRot, 18.0 * dt);
+
+            groundTex.offset.x = STATE.groundOffset * 0.12;
+            updateInstancedPipes();
+
+        } else if (STATE.phase === 'start') {
+            // Apple-Grade Idle Bob
+            STATE.birdY = C.BIRD_SPAWN_Y + Math.sin(time * 0.003) * 0.35;
+            birdGroup.rotation.z = Math.sin(time * 0.002) * 0.05;
+            leftWing.rotation.x = Math.sin(time * 0.006) * 0.3; rightWing.rotation.x = -Math.sin(time * 0.006) * 0.3;
+            accumulator = 0; // Prevent physics debt
+        } else if (STATE.phase === 'over') {
+            if (STATE.birdY > C.GROUND_Y + C.BIRD_RADIUS) {
+                STATE.birdVel += C.GRAVITY * dt * 1.5;
+                STATE.birdY += STATE.birdVel * dt;
+                birdGroup.rotation.z = THREE.MathUtils.lerp(birdGroup.rotation.z, -Math.PI/2, 10.0 * dt);
+            } else { STATE.birdY = C.GROUND_Y + C.BIRD_RADIUS; }
+            accumulator = 0;
+        }
+
+        birdGroup.position.y = STATE.birdY;
+        renderer.render(scene, camera);
+    };
+
+    // ============================================================================
+    // 8. RESILIENCE: STRICT RESIZE OBSERVER (Dynamic UI Adaptation)
+    // ============================================================================
+    const handleResize = () => {
+        const w = window.innerWidth, h = window.innerHeight;
+        const newAspect = w / h;
+        camera.aspect = newAspect;
+        // Dynamically pull frustum back on narrow mobile portraits to avoid clipping
+        camera.fov = newAspect < 1.0 ? 60 + (1.0 - newAspect) * 45 : 50;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    };
+    window.addEventListener('resize', handleResize, { passive: true });
+
+    // 🚀 Ignite Engine
+    initPipes(); updateInstancedPipes(); handleResize();
+    requestAnimationFrame(gameLoop);
+
+})();
+</script>
+</body>
+</html>
