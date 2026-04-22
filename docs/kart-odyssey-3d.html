@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kart Odyssey 3D</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Titan+One&display=swap');
+
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        
+        body { 
+            margin: 0; overflow: hidden; 
+            background-color: #48dbfb; /* Bright Sky */
+            font-family: 'Titan One', sans-serif;
+            touch-action: none; /* Crucial for preventing mobile pull-to-refresh */
+        }
+        
+        #ui-layer {
+            position: absolute; inset: 0; pointer-events: none;
+            display: flex; flex-direction: column; justify-content: space-between;
+            padding: 40px 20px; z-index: 10;
+        }
+
+        .hud-top { display: flex; justify-content: space-between; }
+
+        .hud-item {
+            background: rgba(255, 255, 255, 0.95);
+            border: 4px solid #2f3542; border-radius: 25px;
+            padding: 8px 20px; font-size: 26px; color: #ff4757;
+            box-shadow: 0 6px 0 #2f3542, 0 10px 15px rgba(0,0,0,0.2);
+            text-shadow: 1px 1px 0px rgba(0,0,0,0.1);
+        }
+
+        #start-screen {
+            position: absolute; inset: 0; pointer-events: auto;
+            background: radial-gradient(circle, rgba(72,219,251,0.8) 0%, rgba(47,53,66,0.9) 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.3s; z-index: 20;
+        }
+
+        h1 {
+            font-size: 75px; color: #feca57;
+            text-shadow: 0 8px 0 #ff6b6b, 0 16px 0 #2f3542;
+            transform: rotate(-5deg); margin: 0 0 40px 0;
+            text-align: center; line-height: 1.1;
+            animation: float 2s infinite ease-in-out;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: rotate(-5deg) translateY(0); }
+            50% { transform: rotate(-5deg) translateY(-15px); }
+        }
+
+        .hint {
+            color: white; font-size: 22px; text-align: center;
+            text-shadow: 3px 3px 0 #000; animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.05); } }
+
+        #speed-lines {
+            position: absolute; inset: 0; pointer-events: none; opacity: 0;
+            background: radial-gradient(circle at 50% 50%, transparent 30%, rgba(255,255,255,0.5) 100%);
+            transition: opacity 0.2s; z-index: 5;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="hud-top">
+            <div class="hud-item">⭐ <span id="score-count">0</span></div>
+            <div class="hud-item" style="color: #1dd1a1;">LAP <span id="lap-count">1</span>/3</div>
+        </div>
+    </div>
+
+    <div id="speed-lines"></div>
+
+    <div id="start-screen">
+        <h1 id="title-text">KART<br>ODYSSEY</h1>
+        <div class="hint" id="tap-text">TAP ANYWHERE TO ACCELERATE<br><br>↔️ SWIPE TO STEER</div>
+    </div>
+
+    <script>
+        // === GAME STATE ===
+        let state = 'start'; // start, racing, finished
+        let score = 0, currentLap = 1;
+        const maxLaps = 3;
+
+        // Physics variables
+        let progress = 0; 
+        let speed = 0, maxSpeed = 0.0022, targetSpeed = 0.0022;
+        let lateralPos = 0; // -1 to 1 (left to right side of track)
+        let steering = 0, targetSteering = 0;
+        let bounceY = 0, bounceVelocity = 0;
+        
+        // Input variables
+        let isSwiping = false, touchX = 0;
+
+        // Audio System
+        let audioCtx;
+        function playSound(type) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            if(type === 'coin') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(987.77, audioCtx.currentTime); 
+                osc.frequency.setValueAtTime(1318.51, audioCtx.currentTime + 0.1); 
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+            } else if(type === 'boost') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+            }
+        }
+
+        // === THREE.JS INITIALIZATION ===
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#48dbfb');
+        scene.fog = new THREE.FogExp2('#48dbfb', 0.0035);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 800);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x555555, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        dirLight.shadow.camera.near = 10; dirLight.shadow.camera.far = 150;
+        dirLight.shadow.camera.left = -30; dirLight.shadow.camera.right = 30;
+        dirLight.shadow.camera.top = 30; dirLight.shadow.camera.bottom = -30;
+        scene.add(dirLight);
+        scene.add(dirLight.target);
+
+        // Deep Ocean Below
+        const water = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), new THREE.MeshLambertMaterial({color: 0x0abde3, transparent: true, opacity: 0.8}));
+        water.rotation.x = -Math.PI / 2; water.position.y = -40;
+        scene.add(water);
+
+        // === PROCEDURAL TRACK GENERATION ===
+        const points = [];
+        const numPoints = 30;
+        for (let i = 0; i < numPoints; i++) {
+            const angle = (i / numPoints) * Math.PI * 2;
+            const r = 180 + Math.sin(angle * 5) * 40; 
+            const x = Math.cos(angle) * r;
+            const z = Math.sin(angle) * r;
+            const y = Math.sin(angle * 2) * 25 + Math.cos(angle * 3) * 15; // Smooth Hills
+            points.push(new THREE.Vector3(x, y, z));
+        }
+        const curve = new THREE.CatmullRomCurve3(points, true);
+
+        // Track Texture (Canvas)
+        const tCanvas = document.createElement('canvas');
+        tCanvas.width = 512; tCanvas.height = 512;
+        const ctx = tCanvas.getContext('2d');
+        ctx.fillStyle = '#1dd1a1'; ctx.fillRect(0, 0, 512, 512); // Green Road
+        for(let i=0; i<512; i+=64) {
+            ctx.fillStyle = (i/64)%2===0 ? '#ff6b6b' : '#ffffff'; // Red/White Curbs
+            ctx.fillRect(0, i, 48, 64); ctx.fillRect(512-48, i, 48, 64);
+        }
+        ctx.fillStyle = '#feca57'; // Yellow Dashes
+        for(let i=0; i<512; i+=128) ctx.fillRect(248, i+32, 16, 64);
+        
+        const trackTex = new THREE.CanvasTexture(tCanvas);
+        trackTex.wrapS = trackTex.wrapT = THREE.RepeatWrapping;
+        trackTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+        // Track Geometry
+        const segments = 1000;
+        const trackWidth = 24; const depth = 4;
+        const pos = [], uvs = [];
+        const topIdx = [], botIdx = [], wallIdx = [];
+
+        for(let i=0; i<=segments; i++) {
+            const t = i / segments;
+            const p = curve.getPointAt(t);
+            const tan = curve.getTangentAt(t).normalize();
+            
+            // Banking physics calculation
+            const tan2 = curve.getTangentAt((t + 0.01) % 1).normalize();
+            const turn = tan.x * tan2.z - tan.z * tan2.x;
+            
+            const up = new THREE.Vector3(0,1,0).applyAxisAngle(tan, turn * 15).normalize();
+            const right = new THREE.Vector3().crossVectors(tan, up).normalize();
+            const exactUp = new THREE.Vector3().crossVectors(right, tan).normalize();
+
+            const p1 = p.clone().addScaledVector(right, -trackWidth/2);
+            const p2 = p.clone().addScaledVector(right, trackWidth/2);
+            const p3 = p1.clone().addScaledVector(exactUp, -depth);
+            const p4 = p2.clone().addScaledVector(exactUp, -depth);
+
+            pos.push(p1.x, p1.y, p1.z,  p2.x, p2.y, p2.z,  p3.x, p3.y, p3.z,  p4.x, p4.y, p4.z);
+            const v = t * 180; uvs.push(0,v, 1,v, 0,v, 1,v);
+        }
+
+        for(let i=0; i<segments; i++) {
+            const a = i * 4; const nA = (i + 1) * 4;
+            topIdx.push(a, nA, a+1,   a+1, nA, nA+1);
+            botIdx.push(a+2, a+3, nA+2,   a+3, nA+3, nA+2);
+            wallIdx.push(a, a+2, nA,   a+2, nA+2, nA); // Left
+            wallIdx.push(a+1, nA+1, a+3,   a+3, nA+1, nA+3); // Right
+        }
+
+        const trackGeo = new THREE.BufferGeometry();
+        trackGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        trackGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        trackGeo.setIndex([...topIdx, ...botIdx, ...wallIdx]);
+        trackGeo.addGroup(0, topIdx.length, 0);
+        trackGeo.addGroup(topIdx.length, botIdx.length, 1);
+        trackGeo.addGroup(topIdx.length + botIdx.length, wallIdx.length, 2);
+        trackGeo.computeVertexNormals();
+
+        const trackMesh = new THREE.Mesh(trackGeo, [
+            new THREE.MeshStandardMaterial({ map: trackTex, roughness: 0.8 }),
+            new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 1.0 }),
+            new THREE.MeshStandardMaterial({ color: 0xff9f43, roughness: 0.8 }) // Orange Walls
+        ]);
+        trackMesh.receiveShadow = true; scene.add(trackMesh);
+
+        // === SCENERY & ITEMS ===
+        const crystalGeo = new THREE.ConeGeometry(4, 15, 6);
+        const crystalMat = new THREE.MeshStandardMaterial({color: 0xfeca57, flatShading: true, roughness: 0.1});
+        for(let i=0; i<40; i++) {
+            const mesh = new THREE.Mesh(crystalGeo, crystalMat);
+            const t = i/40; const p = curve.getPointAt(t);
+            const right = new THREE.Vector3().crossVectors(curve.getTangentAt(t), new THREE.Vector3(0,1,0)).normalize();
+            mesh.position.copy(p).addScaledVector(right, (i%2===0?1:-1) * (25 + Math.random()*20));
+            mesh.position.y += Math.random() * 5;
+            mesh.rotation.set((Math.random()-0.5)*0.5, 0, (Math.random()-0.5)*0.5);
+            mesh.castShadow = true; scene.add(mesh);
+        }
+
+        const items = [];
+        const coinGeo = new THREE.TorusGeometry(0.8, 0.25, 8, 16);
+        const coinMat = new THREE.MeshStandardMaterial({color: 0xf1c40f, metalness: 0.8, roughness: 0.2, emissive: 0x665500});
+        
+        const bCanvas = document.createElement('canvas'); bCanvas.width = bCanvas.height = 256;
+        const bCtx = bCanvas.getContext('2d');
+        bCtx.fillStyle = '#ee5253'; bCtx.fillRect(0,0,256,256);
+        bCtx.fillStyle = '#feca57'; bCtx.beginPath();
+        bCtx.moveTo(20, 128); bCtx.lineTo(128, 20); bCtx.lineTo(236, 128); bCtx.lineTo(180, 128); bCtx.lineTo(180, 236); bCtx.lineTo(76, 236); bCtx.lineTo(76, 128); bCtx.fill();
+        const boostGeo = new THREE.PlaneGeometry(6, 6);
+        const boostMat = new THREE.MeshBasicMaterial({map: new THREE.CanvasTexture(bCanvas), transparent: true});
+
+        for(let i=0; i<80; i++) {
+            const t = (i + 0.5) / 80;
+            const isBoost = i % 10 === 0;
+            
+            const tan = curve.getTangentAt(t).normalize();
+            const up = new THREE.Vector3(0,1,0).applyAxisAngle(tan, (tan.x * curve.getTangentAt((t+0.01)%1).normalize().z - tan.z * curve.getTangentAt((t+0.01)%1).normalize().x)*15).normalize();
+            const right = new THREE.Vector3().crossVectors(tan, up).normalize();
+            const exactUp = new THREE.Vector3().crossVectors(right, tan).normalize();
+            const lat = (Math.random() - 0.5) * 0.7; // Lane placement
+            const pos = curve.getPointAt(t).clone().addScaledVector(right, lat * trackWidth);
+            
+            if (isBoost) {
+                const mesh = new THREE.Mesh(boostGeo, boostMat);
+                mesh.position.copy(pos).addScaledVector(exactUp, 0.1);
+                mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, exactUp, tan.clone().negate()));
+                mesh.rotateX(-Math.PI/2);
+                scene.add(mesh); items.push({ mesh, type: 'boost', t, active: true });
+            } else {
+                const mesh = new THREE.Mesh(coinGeo, coinMat);
+                mesh.position.copy(pos).addScaledVector(exactUp, 1.2);
+                mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, exactUp, tan.clone().negate()));
+                mesh.castShadow = true; scene.add(mesh);
+                items.push({ mesh, type: 'coin', t, active: true, basePos: mesh.position.clone(), upDir: exactUp });
+            }
+        }
+
+        // === KART ASSEMBLY ===
+        const kartContainer = new THREE.Group(); scene.add(kartContainer);
+        const kartMesh = new THREE.Group(); kartContainer.add(kartMesh);
+        
+        const redMat = new THREE.MeshStandardMaterial({color: 0xee5253});
+        const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 2.4), redMat); chassis.position.y = 0.5;
+        const nose = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 1.0), redMat);
+        nose.rotation.x = Math.PI/2; nose.position.set(0, 0.4, -1.5); // Faces -Z
+        kartMesh.add(chassis, nose);
+
+        const wheels = [];
+        const wGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 16); wGeo.rotateZ(Math.PI/2);
+        const wMat = new THREE.MeshStandardMaterial({color: 0x222222, roughness: 0.9});
+        [[-1.1,-1.2], [1.1,-1.2], [-1.1,1.2], [1.1,1.2]].forEach(p => {
+            const w = new THREE.Mesh(wGeo, wMat); w.position.set(p[0], 0.5, p[1]);
+            kartMesh.add(w); wheels.push(w);
+        });
+
+        const driver = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshStandardMaterial({color: 0x2e86de})); body.position.y = 0.4;
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.45), new THREE.MeshStandardMaterial({color: 0xffcc99})); head.position.y = 1.0;
+        const hat = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.6), redMat); hat.position.y = 1.45; hat.rotation.x = -0.2;
+        driver.add(body, head, hat); driver.position.set(0, 0.6, 0.2); kartMesh.add(driver);
+        kartMesh.traverse(c => { if(c.isMesh) c.castShadow = true; });
+
+        // Dust Particles
+        const particles = [];
+        for(let i=0; i<30; i++) {
+            const p = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshBasicMaterial({color: 0xffffff}));
+            p.visible = false; scene.add(p); particles.push({mesh: p, life: 0});
+        }
+
+        // === INPUT CONTROLS ===
+        window.addEventListener('pointerdown', e => {
+            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            
+            if(state === 'start') {
+                state = 'racing';
+                document.getElementById('start-screen').style.opacity = 0;
+                setTimeout(() => document.getElementById('start-screen').style.display = 'none', 300);
+            } else if (state === 'finished') {
+                currentLap = 1; score = 0; progress = 0; speed = 0; lateralPos = 0; bounceY = 0;
+                document.getElementById('lap-count').innerText = currentLap;
+                document.getElementById('score-count').innerText = score;
+                document.getElementById('title-text').innerHTML = "KART<br>ODYSSEY";
+                document.getElementById('tap-text').innerHTML = "TAP ANYWHERE TO ACCELERATE<br><br>↔️ SWIPE TO STEER";
+                items.forEach(i => { i.active = true; i.mesh.visible = true; });
+                state = 'start'; return;
+            }
+            if(state === 'racing') { isSwiping = true; touchX = e.clientX; }
+        });
+
+        window.addEventListener('pointermove', e => {
+            if(!isSwiping || state !== 'racing') return;
+            targetSteering = (e.clientX - touchX) / (window.innerWidth / 2.0);
+            targetSteering = Math.max(-1, Math.min(1, targetSteering));
+        });
+
+        const endTouch = () => { isSwiping = false; targetSteering = 0; };
+        window.addEventListener('pointerup', endTouch);
+        window.addEventListener('pointercancel', endTouch);
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // === GAME LOOP ===
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (state === 'racing') {
+                // Acceleration
+                speed += (targetSpeed - speed) * 0.05;
+                if(speed > maxSpeed) speed -= 0.00005; // Decay boost
+
+                // Steering
+                steering += (targetSteering - steering) * 0.15;
+                lateralPos += steering * speed * 25; 
+                lateralPos = Math.max(-1, Math.min(1, lateralPos)); // Clamp to track
+
+                // Progress & Laps
+                progress += speed;
+                if(progress >= 1) {
+                    progress -= 1; currentLap++;
+                    if(currentLap > maxLaps) {
+                        state = 'finished';
+                        document.getElementById('start-screen').style.display = 'flex';
+                        document.getElementById('start-screen').style.opacity = 1;
+                        document.getElementById('title-text').innerHTML = "VICTORY!<br><span style='font-size:40px; color:#fff;'>SCORE: " + score + "</span>";
+                        document.getElementById('tap-text').innerText = "TAP TO PLAY AGAIN";
+                    } else {
+                        document.getElementById('lap-count').innerText = currentLap;
+                        items.forEach(i => { i.active = true; i.mesh.visible = true; });
+                    }
+                }
+
+                // Physics positioning
+                const pt = curve.getPointAt(progress);
+                const tan = curve.getTangentAt(progress).normalize();
+                const turn = tan.x * curve.getTangentAt((progress+0.01)%1).normalize().z - tan.z * curve.getTangentAt((progress+0.01)%1).normalize().x;
+                const up = new THREE.Vector3(0,1,0).applyAxisAngle(tan, turn * 15).normalize();
+                const right = new THREE.Vector3().crossVectors(tan, up).normalize();
+                const exactUp = new THREE.Vector3().crossVectors(right, tan).normalize();
+
+                const kartPos = pt.clone().addScaledVector(right, lateralPos * ((trackWidth/2) - 1.5)).addScaledVector(exactUp, 0.2);
+                
+                // Bouncing logic
+                bounceY += bounceVelocity;
+                if(bounceY > 0) bounceVelocity -= 0.015;
+                else { bounceY = 0; bounceVelocity = 0; }
+                kartPos.addScaledVector(exactUp, bounceY);
+
+                kartContainer.position.copy(kartPos);
+                kartContainer.lookAt(kartPos.clone().add(tan));
+                kartContainer.up.copy(exactUp);
+
+                // Visual Leans
+                kartMesh.rotation.z = steering * 0.3;
+                kartMesh.rotation.y = -steering * 0.2;
+                driver.rotation.z = steering * 0.25;
+
+                wheels.forEach((w, i) => {
+                    w.rotation.x -= speed * 250;
+                    if(i < 2) w.rotation.y = -steering * 0.6; // Front wheels pivot
+                });
+
+                // Particles
+                if(Math.abs(steering) > 0.5 || speed > maxSpeed * 1.1) {
+                    if(Math.random() < 0.4) {
+                        const p = particles.find(p => p.life <= 0);
+                        if(p) {
+                            p.life = 1; p.mesh.visible = true;
+                            const offset = new THREE.Vector3((Math.random()-0.5), 0, 1.5).applyQuaternion(kartContainer.quaternion);
+                            p.mesh.position.copy(kartContainer.position).add(offset);
+                            p.mesh.scale.setScalar(1);
+                        }
+                    }
+                }
+
+                // Camera & UI
+                const camDist = 12 + (speed / maxSpeed) * 4;
+                const camHeight = 5 + (speed / maxSpeed) * 1.5;
+                const idealCamPos = kartContainer.position.clone().addScaledVector(tan, -camDist).addScaledVector(exactUp, camHeight);
+                camera.position.lerp(idealCamPos, 0.15);
+                camera.lookAt(kartContainer.position.clone().addScaledVector(tan, 15));
+                
+                camera.fov = THREE.MathUtils.lerp(camera.fov, 70 + (speed / maxSpeed) * 15, 0.1);
+                camera.updateProjectionMatrix();
+
+                document.getElementById('speed-lines').style.opacity = speed > maxSpeed * 1.2 ? 1 : 0;
+                
+                dirLight.position.copy(kartContainer.position).add(new THREE.Vector3(20, 50, 20));
+                dirLight.target = kartContainer;
+
+                // Collision Detection
+                items.forEach(item => {
+                    if(!item.active) return;
+                    if(item.type === 'coin') {
+                        item.mesh.rotation.y += 0.05;
+                        item.mesh.position.copy(item.basePos).addScaledVector(item.upDir, Math.sin(Date.now()*0.005 + item.t*100)*0.4);
+                    }
+                    if(item.mesh.position.distanceTo(kartContainer.position) < 3.5) {
+                        item.active = false; item.mesh.visible = false;
+                        if(item.type === 'coin') {
+                            score++; document.getElementById('score-count').innerText = score; playSound('coin');
+                        } else if(item.type === 'boost') {
+                            speed = maxSpeed * 1.8; bounceVelocity = 0.2; playSound('boost');
+                        }
+                    }
+                });
+
+            } else {
+                // Cinematic Pan
+                const t = (Date.now() * 0.0001) % 1;
+                const pt = curve.getPointAt(t);
+                camera.position.set(pt.x + Math.sin(t*20)*50, pt.y + 25, pt.z + Math.cos(t*20)*50);
+                camera.lookAt(pt);
+            }
+
+            particles.forEach(p => {
+                if(p.life > 0) {
+                    p.life -= 0.05; p.mesh.position.y += 0.05; p.mesh.scale.setScalar(p.life);
+                    if(p.life <= 0) p.mesh.visible = false;
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
