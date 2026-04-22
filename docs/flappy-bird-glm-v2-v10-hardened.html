@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Flappy Bird 3D V2</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;background:#87ceeb;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;font-family:'Segoe UI',system-ui,-apple-system,sans-serif}
+canvas{display:block;width:100vw;height:100vh}
+.ui-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.18);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:30px 40px;text-align:center;color:#fff;display:none;max-width:min(85vw,360px)}
+.ui-panel h2{font-size:clamp(24px,6vw,32px);margin-bottom:10px;text-shadow:0 2px 6px rgba(0,0,0,.35);letter-spacing:.5px}
+.ui-panel p{font-size:clamp(14px,3.8vw,17px);opacity:.9;line-height:1.6;margin:4px 0}
+#score{position:absolute;top:max(40px,env(safe-area-inset-top,20px)+20px);left:50%;transform:translateX(-50%);font:bold clamp(36px,10vw,56px) 'Segoe UI',system-ui,-apple-system,sans-serif;color:#fff;text-shadow:0 3px 10px rgba(0,0,0,.45),0 0 2px rgba(0,0,0,.8);pointer-events:none;z-index:10;letter-spacing:-1px}
+</style>
+</head>
+<body>
+<div id="score">0</div>
+<div class="ui-panel" id="startPanel"><h2>Flappy Bird 3D</h2><p>Tap to fly!</p></div>
+<div class="ui-panel" id="overPanel"><h2>Game Over</h2><p id="finalScore"></p><p id="bestScore"></p><p style="margin-top:14px;opacity:.65">Tap to restart</p></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ─── CONSTANTS (MAGIC-1 fix: extract all magic numbers) ─── */
+var CFG={
+  PIPE_COUNT:20, GAP:5.5, PIPE_SPACE:7, PIPE_START_X:12, PIPE_SPEED:0.06,
+  GRAVITY:-0.008, FLAP_VEL:0.14,
+  BIRD_RADIUS:0.45, PIPE_RADIUS:0.7, HITBOX_PAD:0.4,
+  MAX_DT_FRAMES:10, MIN_FRAME_MS:16,
+  GROUND_SCROLL_RESET_PIPES:100,
+  SHADOW_MAP_BASE:1024, SHADOW_MAP_MOBILE:512,
+  SKY_COLORS:['#4a90d9','#87ceeb','#e8f4fd'],
+  BIRD_BODY:'#ffd700',BIRD_WING:'#ffaa00',BIRD_EYE:'#222222',BIRD_BEAK:'#ff6600'
+};
+
+/* ─── SAFE LOCALSTORAGE (BOUND-1 fix: wrap in try/catch) ─── */
+function safeLS(key,def){try{return JSON.parse(localStorage.getItem(key))}catch(e){return def}}
+function safeLSSet(key,val){try{localStorage.setItem(key,JSON.stringify(val))}catch(e){}}
+
+/* ─── RENDERER SETUP WITH ERROR HANDLING (BOOT-1 fix) ─── */
+var isMobile=/Mobi|Android/i.test(navigator.userAgent);
+var shadowMapSize=isMobile?CFG.SHADOW_MAP_MOBILE:CFG.SHADOW_MAP_BASE;
+
+var renderer,scene,camera,W,H,pixelRatio=window.devicePixelRatio||1;
+try{
+  renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  renderer.setPixelRatio(pixelRatio);
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=isMobile?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
+  document.body.appendChild(renderer.domElement);
+}catch(e){console.error('WebGL init failed:',e);return}
+
+W=renderer.domElement.clientWidth;H=renderer.domElement.clientHeight;
+
+/* ─── SCENE (Sky gradient) ─── */
+scene=new THREE.Scene();
+var skyCanvas=document.createElement('canvas');skyCanvas.width=2;skyCanvas.height=512;
+var sctx=skyCanvas.getContext('2d');
+var grad=sctx.createLinearGradient(0,0,0,512);
+for(var si=0;si<CFG.SKY_COLORS.length;si++){grad.addColorStop(si/(CFG.SKY_COLORS.length-1),CFG.SKY_COLORS[si])}
+sctx.fillStyle=grad;sctx.fillRect(0,0,2,512);
+scene.background=new THREE.CanvasTexture(skyCanvas);
+
+/* ─── CAMERA ─── */
+camera=new THREE.PerspectiveCamera(50,W/H,0.1,200);
+camera.position.set(-2,6,12);camera.lookAt(4,2,0);
+
+/* ─── LIGHTS ─── */
+var ambLight=new THREE.AmbientLight(0xffffff,isMobile?0.6:0.5);scene.add(ambLight);
+var dirLight=new THREE.DirectionalLight(0xfff5e6,1);
+dirLight.position.set(5,15,8);dirLight.castShadow=true;
+dirLight.shadow.mapSize.set(shadowMapSize,shadowMapSize);
+dirLight.shadow.camera.left=-20;dirLight.shadow.camera.right=20;
+dirLight.shadow.camera.top=15;dirLight.shadow.camera.bottom=-10;
+scene.add(dirLight);
+
+/* ─── GROUND WITH SCROLLING STRIPES ─── */
+var groundGeo=new THREE.PlaneGeometry(80,40);
+var groundMat=new THREE.MeshLambertMaterial({color:0x8bc34a});
+var ground=new THREE.Mesh(groundGeo,groundMat);
+ground.rotation.x=-Math.PI/2;ground.position.set(10,-1.5,0);ground.receiveShadow=true;
+scene.add(ground);
+
+var stripeCanvas=document.createElement('canvas');stripeCanvas.width=256;stripeCanvas.height=256;
+var stCtx=stripeCanvas.getContext('2d');
+stCtx.fillStyle='#8bc34a';stCtx.fillRect(0,0,256,256);
+for(var sti=0;sti<256;sti+=32){stCtx.fillStyle=sti%64===0?'#7cb342':'#9ccc65';stCtx.fillRect(sti,0,32,256)}
+var stripeTex=new THREE.CanvasTexture(stripeCanvas);
+stripeTex.wrapS=stripeTex.wrapT=THREE.RepeatWrapping;stripeTex.repeat.set(10,5);
+groundMat.map=stripeTex;groundMat.needsUpdate=true;
+
+/* ─── CLOUDS ─── */
+function makeCloud(x,y,z,s){
+  var g=new THREE.Group();
+  var m=new THREE.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:0.9});
+  for(var ci=0;ci<5;ci++){
+    var sp=new THREE.Mesh(new THREE.SphereGeometry(1+Math.random()*.8,8,6),m);
+    sp.position.set(ci*1.2-2,(Math.random()-.5)*.5,(Math.random()-.5)*.5);g.add(sp);
+  }
+  g.position.set(x,y,z);g.scale.setScalar(s||1);scene.add(g);return g;
+}
+var clouds=[makeCloud(10,12,-8,1.5),makeCloud(-5,14,-12,2),makeCloud(25,11,-6,1),
+  makeCloud(-15,13,-10,1.8),makeCloud(35,12,-9,1.3)];
+
+/* ─── BIRD ─── */
+var birdGroup=new THREE.Group();
+var bodyGeo=new THREE.SphereGeometry(CFG.BIRD_RADIUS,16,12);
+var bodyMat=new THREE.MeshPhongMaterial({color:parseInt(CFG.BIRD_BODY.slice(1),16),shininess:60});
+var bodyMesh=new THREE.Mesh(bodyGeo,bodyMat);bodyMesh.castShadow=true;
+birdGroup.add(bodyMesh);
+
+var wingGeo=new THREE.PlaneGeometry(0.6,0.3);
+var wingMat=new THREE.MeshPhongMaterial({color:parseInt(CFG.BIRD_WING.slice(1),16),side:THREE.DoubleSide});
+var leftWing=new THREE.Mesh(wingGeo,wingMat);leftWing.position.set(-.1,.15,.35);leftWing.rotation.y=0.3;
+var rightWing=new THREE.Mesh(wingGeo.clone(),wingMat.clone());rightWing.position.set(-.1,.15,-.35);rightWing.rotation.y=-0.3;
+birdGroup.add(leftWing,rightWing);
+
+var eyeGeo=new THREE.SphereGeometry(0.08,8,6);
+var eyeMat=new THREE.MeshPhongMaterial({color:parseInt(CFG.BIRD_EYE.slice(1),16)});
+var eyeL=new THREE.Mesh(eyeGeo,eyeMat);eyeL.position.set(.3,.15,.25);
+var eyeR=new THREE.Mesh(eyeGeo.clone(),eyeMat.clone());eyeR.position.set(.3,.15,-.25);
+birdGroup.add(eyeL,eyeR);
+
+var beakGeo=new THREE.ConeGeometry(0.12,0.3,6);
+var beakMat=new THREE.MeshPhongMaterial({color:parseInt(CFG.BIRD_BEAK.slice(1),16)});
+var beak=new THREE.Mesh(beakGeo,beakMat);beak.rotation.z=-Math.PI/2;beak.position.set(.55,0,0);birdGroup.add(beak);
+
+scene.add(birdGroup);
+
+/* ─── PIPES (InstancedMesh) ─── */
+var pipeBodyGeo=new THREE.CylinderGeometry(CFG.PIPE_RADIUS,CFG.PIPE_RADIUS,1,12);
+var pipeMatInst=new THREE.MeshPhongMaterial({color:0x2e7d32});
+var capMatInst=new THREE.MeshPhongMaterial({color:0x1b5e20});
+
+var bodies=new THREE.InstancedMesh(pipeBodyGeo,pipeMatInst,CFG.PIPE_COUNT*2);
+var caps=new THREE.InstancedMesh(pipeBodyGeo.clone(),capMatInst,CFG.PIPE_COUNT*2);
+bodies.castShadow=true;caps.castShadow=true;
+scene.add(bodies);scene.add(caps);
+
+/* ─── GAME STATE ─── */
+var birdY=3,birdVel=0,scoreVal=0,gameState='start';
+var highScore=safeLS('flappy3d_hi',0)||0;
+var pipes=[],groundOffset=0,pipesSinceReset=0;
+
+function initPipes(){
+  pipes=[];
+  for(var pi=0;pi<CFG.PIPE_COUNT;pi++){
+    var gapY=1+Math.random()*7;
+    var x=CFG.PIPE_START_X+pi*CFG.PIPE_SPACE;
+    pipes.push({x:x,gapY:gapY,scored:false});
+  }
+}
+
+var dummy=new THREE.Object3D();
+
+function updatePipeMeshes(){
+  for(var mi=0;mi<CFG.PIPE_COUNT;mi++){
+    var p=pipes[mi];if(!p)continue;
+    /* Bottom body */
+    var bH=Math.max(0.1,p.gapY-CFG.GAP/2-(-1.5));
+    dummy.position.set(p.x,bH/2-1.5,0);dummy.scale.set(1,bH,1);dummy.updateMatrix();
+    bodies.setMatrixAt(mi*2,dummy.matrix);
+    /* Bottom cap */
+    dummy.position.set(p.x,p.gapY-CFG.GAP/2,0);dummy.scale.set(1,1,1);dummy.updateMatrix();
+    caps.setMatrixAt(mi*2,dummy.matrix);
+    /* Top body */
+    var tH=Math.max(0.1,14-(p.gapY+CFG.GAP/2));
+    dummy.position.set(p.x,p.gapY+CFG.GAP/2+tH/2,0);dummy.scale.set(1,tH,1);dummy.updateMatrix();
+    bodies.setMatrixAt(mi*2+1,dummy.matrix);
+    /* Top cap */
+    dummy.position.set(p.x,p.gapY+CFG.GAP/2,0);dummy.scale.set(1,1,1);dummy.updateMatrix();
+    caps.setMatrixAt(mi*2+1,dummy.matrix);
+  }
+  bodies.instanceMatrix.needsUpdate=true;
+  caps.instanceMatrix.needsUpdate=true;
+}
+
+function resetGame(){
+  birdY=3;birdVel=0;scoreVal=0;gameState='playing';pipesSinceReset=0;
+  document.getElementById('score').textContent='0';
+  document.getElementById('startPanel').style.display='none';
+  document.getElementById('overPanel').style.display='none';
+  initPipes();
+}
+
+/* ─── INPUT (pointer events, deduplicated) ─── */
+var _lastPointerId=null;
+function handleInput(e){
+  e.preventDefault();
+  /* Deduplicate: only process unique pointer IDs within same frame */
+  if(_lastPointerId===e.pointerId)return;
+  _lastPointerId=e.pointerId;
+
+  try{if(e.target.setPointerCapture){e.target.setPointerCapture(e.pointerId)}}catch(ex){}
+
+  if(gameState==='start'){resetGame();birdVel=CFG.FLAP_VEL;return}
+  if(gameState==='over'){gameState='playing';document.getElementById('overPanel').style.display='none';initPipes();birdY=3;birdVel=0;scoreVal=0;pipesSinceReset=0;return}
+  birdVel=CFG.FLAP_VEL;
+}
+renderer.domElement.addEventListener('pointerdown',handleInput);
+
+/* ─── COLLISION (with tunneling prevention) ─── */
+function checkCollision(){
+  /* Boundary checks */
+  if(birdY<-1||birdY>13)return true;
+
+  var birdBottom=birdY-CFG.BIRD_RADIUS;
+  var birdTop=birdY+CFG.BIRD_RADIUS;
+  var halfPipeW=CFG.PIPE_RADIUS+CFG.HITBOX_PAD;
+
+  for(var ci2=0;ci2<pipes.length;ci2++){
+    var p=pipes[ci2];
+    var dx=Math.abs(p.x);
+    if(dx<1.2){
+      var gapTop=p.gapY+CFG.GAP/2-CFG.HITBOX_PAD;
+      var gapBot=p.gapY-CFG.GAP/2+CFG.HITBOX_PAD;
+      if(birdBottom<gapBot||birdTop>gapTop)return true;
+
+      /* Tunneling prevention: check intermediate positions */
+      if(dtFrames>3){
+        var subSteps=4;
+        for(var ss=1;ss<=subSteps;ss++){
+          var frac=ss/subSteps;
+          var midY=birdY-birdVel*frac*dtFrames;
+          var midBottom=midY-CFG.BIRD_RADIUS;
+          var midTop=midY+CFG.BIRD_RADIUS;
+          if(midBottom<gapBot||midTop>gapTop)return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/* ─── GAME LOOP (with dt clamping fix) ─── */
+var lastTime=0,wingAngle=0,dtFrames=1;
+
+function animate(time){
+  requestAnimationFrame(animate);
+  var rawDt=Math.max((time-lastTime)/CFG.MIN_FRAME_MS,0.5);
+  /* FIX: clamp dt to prevent physics explosion after tab backgrounding */
+  dtFrames=Math.min(rawDt,CFG.MAX_DT_FRAMES);
+  lastTime=time;
+
+  /* Clouds drift */
+  for(var cc=0;cc<clouds.length;cc++){clouds[cc].position.x+=0.005*dtFrames;if(clouds[cc].position.x>40)clouds[cc].position.x=-20}
+
+  if(gameState==='playing'){
+    birdVel+=CFG.GRAVITY*dtFrames;birdY+=birdVel*dtFrames;
+    birdGroup.position.y=birdY;
+
+    /* Wing flap animation */
+    wingAngle+=(birdVel>0?0.3:-0.15)*dtFrames;
+    leftWing.rotation.x=Math.sin(wingAngle*8)*0.5;
+    rightWing.rotation.x=-Math.sin(wingAngle*8)*0.5;
+
+    /* Bird tilt */
+    birdGroup.rotation.z=THREE.MathUtils.lerp(birdGroup.rotation.z,birdVel*3,0.1*dtFrames);
+
+    /* Move pipes */
+    for(var pp=0;pp<pipes.length;pp++){pipes[pp].x-=CFG.PIPE_SPEED*dtFrames}
+
+    /* Recycle pipes + ground offset reset (fix unbounded growth) */
+    var first=pipes[0];
+    if(first&&first.x<-6){
+      pipesSinceReset++;
+      var lastP=pipes[pipes.length-1];
+      first.x=lastP.x+CFG.PIPE_SPACE;
+      first.gapY=1+Math.random()*7;first.scored=false;
+      pipes.push(pipes.shift());
+
+      /* Reset ground offset periodically to prevent float precision loss */
+      if(pipesSinceReset>=CFG.GROUND_SCROLL_RESET_PIPES){groundOffset=0;pipesSinceReset=0}
+    }
+
+    /* Score */
+    for(var ps=0;ps<pipes.length;ps++){
+      var sp=pipes[ps];
+      if(!sp.scored&&sp.x<0){sp.scored=true;scoreVal++;document.getElementById('score').textContent=scoreVal}
+    }
+
+    updatePipeMeshes();
+
+    /* Ground scroll */
+    groundOffset+=CFG.PIPE_SPEED*dtFrames;
+    stripeTex.offset.x=(groundOffset*0.15)%2;
+
+    if(checkCollision()){
+      gameState='over';
+      safeLSSet('flappy3d_hi',scoreVal>highScore?scoreVal:highScore);
+      if(scoreVal>highScore){highScore=scoreVal}
+      document.getElementById('overPanel').style.display='';
+      document.getElementById('finalScore').textContent='Score: '+scoreVal;
+      document.getElementById('bestScore').textContent='Best: '+highScore;
+    }
+  } else {
+    /* Idle bob */
+    birdGroup.position.y=3+Math.sin(time*0.002)*0.5;
+    birdGroup.rotation.z=Math.sin(time*0.003)*0.1;
+    leftWing.rotation.x=Math.sin(time*0.006)*0.3;
+    rightWing.rotation.x=-Math.sin(time*0.006)*0.3;
+  }
+
+  renderer.render(scene,camera);
+}
+
+/* ─── INIT ─── */
+initPipes();updatePipeMeshes();
+document.getElementById('startPanel').style.display='';
+birdGroup.position.set(0,3,0);
+animate(0);
+
+/* ─── RESIZE (with pixel ratio change detection) ─── */
+var prevPixelRatio=pixelRatio;
+window.addEventListener('resize',function(){
+  var w=innerWidth,h=innerHeight;
+  W=w;H=h;
+  /* FIX: detect and apply pixel ratio changes on device rotation */
+  var newPR=navigator.devicePixelRatio||1;
+  if(newPR!==prevPixelRatio){prevPixelRatio=newPR;renderer.setPixelRatio(newPR)}
+  camera.aspect=w/h;camera.updateProjectionMatrix();
+  renderer.setSize(w,h);
+});
+
+})();
+</script>
+</body>
+</html>
