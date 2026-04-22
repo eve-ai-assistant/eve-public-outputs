@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Flappy 3D</title>
+    <style>
+        :root {
+            --glass-bg: rgba(20, 25, 30, 0.65);
+            --glass-blur: blur(24px) saturate(180%);
+            --font-stack: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --accent: #FACC15;
+        }
+        
+        * { box-sizing: border-box; touch-action: none; user-select: none; -webkit-user-select: none; outline: none; }
+        
+        html, body {
+            margin: 0; padding: 0; width: 100vw; height: 100dvh; overflow: hidden;
+            background-color: #87CEEB; font-family: var(--font-stack); overscroll-behavior: none;
+        }
+
+        #game-canvas { display: block; width: 100%; height: 100%; position: absolute; z-index: 1; }
+        
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 10;
+        }
+
+        #live-score {
+            position: absolute; top: max(env(safe-area-inset-top, 20px), 32px);
+            left: 50%; transform: translateX(-50%); font-size: 56px; font-weight: 800; color: white;
+            text-shadow: 0 4px 16px rgba(0,0,0,0.4); opacity: 0; z-index: 5;
+            transition: opacity 0.3s ease; pointer-events: none;
+        }
+
+        .panel {
+            background: var(--glass-bg);
+            backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+            border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 24px;
+            padding: 40px; text-align: center; color: white;
+            box-shadow: 0 16px 40px rgba(0,0,0,0.25);
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%) scale(0.95); opacity: 0;
+            transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            min-width: 320px; pointer-events: none;
+        }
+        
+        .panel.active { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+
+        h1 { margin: 0 0 16px 0; font-size: 32px; font-weight: 800; letter-spacing: -0.5px; text-transform: uppercase; }
+        p { margin: 0 0 24px 0; font-size: 16px; opacity: 0.85; font-weight: 500; }
+        
+        .score-box { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .score-col { background: rgba(0,0,0,0.25); border-radius: 12px; padding: 12px; border: 1px solid rgba(255,255,255,0.05); }
+        .score-col span { display: block; font-size: 12px; text-transform: uppercase; font-weight: 700; opacity: 0.6; margin-bottom: 4px; }
+        .score-col div { font-size: 32px; font-weight: 800; color: var(--accent); }
+        
+        .btn {
+            background: white; color: #14191E; border: none; border-radius: 14px; padding: 16px;
+            font-size: 18px; font-weight: 800; cursor: pointer; width: 100%; margin-top: 24px;
+            transition: transform 0.1s, background 0.2s; font-family: inherit;
+        }
+        .btn:active { transform: scale(0.95); background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <canvas id="game-canvas"></canvas>
+    
+    <div id="ui-layer">
+        <div id="live-score">0</div>
+        
+        <div id="start-panel" class="panel active">
+            <h1>Flappy 3D</h1>
+            <p>Tap, Click or Space to Fly</p>
+        </div>
+
+        <div id="gameover-panel" class="panel">
+            <h1>Game Over</h1>
+            <div class="score-box">
+                <div class="score-col"><span>Score</span><div id="end-score">0</div></div>
+                <div class="score-col"><span>Best</span><div id="end-best">0</div></div>
+            </div>
+            <button class="btn" id="btn-restart">PLAY AGAIN</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        'use strict';
+
+        // 1. System Boot Boundary Protection
+        if (typeof THREE === 'undefined') {
+            document.body.innerHTML = '<h2 style="color:white;text-align:center;margin-top:20vh;">System Error: WebGL Blocked.</h2>';
+            throw new Error("Three.js cascade failure.");
+        }
+
+        // 2. Constants & Deterministic Physics Properties
+        const CFG = {
+            BIRD_X: 2.0, BIRD_RADIUS: 0.42, 
+            GRAVITY: -24.0, JUMP: 8.5, 
+            PIPE_SPEED: 4.8, PIPE_W: 1.6, PIPE_GAP: 3.4,
+            MAX_PIPES: 6, CLOUD_COUNT: 12,
+            FIXED_DT: 1/60, MAX_DT: 0.1
+        };
+
+        const STATE_ENUM = { START: 0, PLAYING: 1, GAMEOVER: 2 };
+        
+        let state = STATE_ENUM.START;
+        let score = 0, highScore = 0;
+        let birdY = 5.0, birdVY = 0.0, wingAnimTime = 0.0, gameOverTimer = 0.0;
+        let accumulator = 0.0, lastTime = performance.now();
+        
+        const pipes = [];
+        const cloudsData = [];
+        const DUMMY = new THREE.Object3D(); // O(1) Pre-allocated WebGL Matrix Pad
+
+        // IO Recovery Boundary
+        try { highScore = parseInt(localStorage.getItem('f3d_best'), 10) || 0; } catch (e) { highScore = 0; }
+
+        // DOM Hooks
+        const canvas = document.getElementById('game-canvas');
+        const pStart = document.getElementById('start-panel');
+        const pOver = document.getElementById('gameover-panel');
+        const elLiveScore = document.getElementById('live-score');
+        const elEndScore = document.getElementById('end-score');
+        const elEndBest = document.getElementById('end-best');
+
+        // 3. WebGL Engine Blueprint
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Clamped for VRAM protection
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 10, 30);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 50);
+        camera.position.set(-2, 6, 12);
+        camera.lookAt(4, 3, 0);
+
+        // Lighting Architecture
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+        dirLight.position.set(-4, 15, 8);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        dirLight.shadow.camera.left = -10; dirLight.shadow.camera.right = 16;
+        dirLight.shadow.camera.top = 10; dirLight.shadow.camera.bottom = -4;
+        dirLight.shadow.bias = -0.001;
+        scene.add(dirLight);
+
+        // 4. Zero-GC Memory Entities
+        const birdGroup = new THREE.Group();
+        birdGroup.position.set(CFG.BIRD_X, birdY, 0);
+        scene.add(birdGroup);
+
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xFACC15, roughness: 0.4 });
+        const body = new THREE.Mesh(new THREE.SphereGeometry(CFG.BIRD_RADIUS, 32, 16), bodyMat);
+        body.castShadow = true;
+        birdGroup.add(body);
+
+        const wingMat = new THREE.MeshStandardMaterial({ color: 0xF59E0B, side: THREE.DoubleSide });
+        
+        // Offset Hinges for accurate wing pivots
+        const wingLGroup = new THREE.Group(); wingLGroup.position.set(0, 0, 0.35);
+        const wingL = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.4), wingMat);
+        wingL.rotation.x = Math.PI / 2; wingL.position.set(0, 0, 0.2);
+        wingL.castShadow = true; wingLGroup.add(wingL);
+        
+        const wingRGroup = new THREE.Group(); wingRGroup.position.set(0, 0, -0.35);
+        const wingR = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.4), wingMat);
+        wingR.rotation.x = Math.PI / 2; wingR.position.set(0, 0, -0.2);
+        wingR.castShadow = true; wingRGroup.add(wingR);
+        
+        birdGroup.add(wingLGroup, wingRGroup);
+
+        // Pipe Geometry (Batched Instances)
+        const pipeMat = new THREE.MeshStandardMaterial({ color: 0x22C55E, roughness: 0.6 });
+        const shafts = new THREE.InstancedMesh(new THREE.CylinderGeometry(CFG.PIPE_W/2, CFG.PIPE_W/2, 1, 16), pipeMat, CFG.MAX_PIPES * 2);
+        const caps = new THREE.InstancedMesh(new THREE.CylinderGeometry(CFG.PIPE_W/2 + 0.05, CFG.PIPE_W/2 + 0.05, 0.4, 16), pipeMat, CFG.MAX_PIPES * 2);
+        shafts.castShadow = shafts.receiveShadow = caps.castShadow = caps.receiveShadow = true;
+        scene.add(shafts); scene.add(caps);
+
+        for (let i = 0; i < CFG.MAX_PIPES; i++) {
+            pipes.push({ x: 15 + i * 6.5, gapY: Math.random() * 4 + 3, passed: false });
+        }
+
+        // Cloud Instancing
+        const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
+        const clouds = new THREE.InstancedMesh(new THREE.SphereGeometry(1.5, 16, 16), cloudMat, CFG.CLOUD_COUNT);
+        scene.add(clouds);
+
+        for (let i = 0; i < CFG.CLOUD_COUNT; i++) {
+            cloudsData.push({
+                x: Math.random() * 40 - 10, y: Math.random() * 6 + 2,
+                z: -8 - Math.random() * 10, s: Math.random() * 1.5 + 1.0,
+                v: Math.random() * 0.8 + 0.4
+            });
+        }
+
+        // 5. Flow & State Mutations
+        function resetGame() {
+            birdY = 5.0; birdVY = CFG.JUMP; score = 0;
+            elLiveScore.innerText = score;
+            for (let i = 0; i < CFG.MAX_PIPES; i++) {
+                pipes[i] = { x: 15 + i * 6.5, gapY: Math.random() * 4 + 3, passed: false };
+            }
+            state = STATE_ENUM.PLAYING;
+            pStart.classList.remove('active');
+            pOver.classList.remove('active');
+            elLiveScore.style.opacity = '1';
+        }
+
+        function triggerGameOver() {
+            state = STATE_ENUM.GAMEOVER;
+            gameOverTimer = 0;
+            if (score > highScore) {
+                highScore = score;
+                try { localStorage.setItem('f3d_best', highScore.toString()); } catch(e){}
+            }
+            elEndScore.innerText = score;
+            elEndBest.innerText = highScore;
+            elLiveScore.style.opacity = '0';
+            pOver.classList.add('active');
+        }
+
+        function handleInput(e) {
+            if (e.type === 'keydown' && e.code !== 'Space') return;
+            if (e.type === 'keydown') e.preventDefault();
+            
+            if (state === STATE_ENUM.START) resetGame();
+            else if (state === STATE_ENUM.PLAYING) birdVY = CFG.JUMP; 
+            else if (state === STATE_ENUM.GAMEOVER && gameOverTimer > 0.5) resetGame();
+        }
+
+        // 6. Deterministic Mathematical Tick
+        function stepPhysics(dt) {
+            if (state === STATE_ENUM.PLAYING) {
+                birdVY += CFG.GRAVITY * dt;
+                birdY += birdVY * dt;
+
+                if (birdY < CFG.BIRD_RADIUS || birdY > 12.0) triggerGameOver();
+
+                for (let i = 0; i < CFG.MAX_PIPES; i++) {
+                    const p = pipes[i];
+                    p.x -= CFG.PIPE_SPEED * dt;
+
+                    // O(1) Mathematical Array Mapping
+                    if (p.x < -6) {
+                        let maxX = -100;
+                        for (let j = 0; j < CFG.MAX_PIPES; j++) if(pipes[j].x > maxX) maxX = pipes[j].x;
+                        p.x = maxX + 6.5;
+                        p.gapY = Math.random() * 4 + 3;
+                        p.passed = false;
+                    }
+
+                    if (!p.passed && p.x < CFG.BIRD_X) {
+                        p.passed = true; score++; elLiveScore.innerText = score;
+                    }
+
+                    // Forgiving Collision Broadphase Boundary
+                    const hitRad = CFG.BIRD_RADIUS * 0.8;
+                    if (p.x - CFG.PIPE_W/2 < CFG.BIRD_X + hitRad && p.x + CFG.PIPE_W/2 > CFG.BIRD_X - hitRad) {
+                        if (birdY + hitRad > p.gapY + CFG.PIPE_GAP/2 || birdY - hitRad < p.gapY - CFG.PIPE_GAP/2) {
+                            triggerGameOver();
+                        }
+                    }
+                }
+            } else if (state === STATE_ENUM.GAMEOVER) {
+                gameOverTimer += dt;
+                if (birdY > CFG.BIRD_RADIUS) {
+                    birdVY += CFG.GRAVITY * dt * 1.5;
+                    birdY += birdVY * dt;
+                } else birdY = CFG.BIRD_RADIUS;
+            }
+
+            for (let i = 0; i < CFG.CLOUD_COUNT; i++) {
+                cloudsData[i].x -= cloudsData[i].v * dt;
+                if (cloudsData[i].x < -15) cloudsData[i].x += 40;
+            }
+        }
+
+        // 7. Visual Render Target Engine
+        function animate(time) {
+            requestAnimationFrame(animate);
+            let dt = Math.max(0, (time - lastTime) / 1000);
+            lastTime = time;
+            
+            // Defeat Tab-Background Tunneling
+            if (dt > CFG.MAX_DT) dt = CFG.MAX_DT; 
+            
+            accumulator += dt;
+            while (accumulator >= CFG.FIXED_DT) {
+                stepPhysics(CFG.FIXED_DT);
+                accumulator -= CFG.FIXED_DT;
+            }
+
+            // Sync visual interpolation cleanly
+            if (state === STATE_ENUM.START) {
+                birdY = 5.0 + Math.sin(performance.now() * 0.003) * 0.4;
+            }
+
+            birdGroup.position.y = birdY;
+            if (state !== STATE_ENUM.START) birdGroup.rotation.z = Math.max(-Math.PI/2, Math.min(Math.PI/4, birdVY * 0.08));
+            else birdGroup.rotation.z = 0;
+
+            if (state !== STATE_ENUM.GAMEOVER) {
+                wingAnimTime += dt * (birdVY > 0 ? 18 : 8);
+                const flapAngle = Math.sin(wingAnimTime) * 0.5;
+                wingLGroup.rotation.x = flapAngle;
+                wingRGroup.rotation.x = -flapAngle;
+            } else {
+                wingLGroup.rotation.x = wingRGroup.rotation.x = 0;
+            }
+
+            // Batch Execute Draw Calls
+            for (let i = 0; i < CFG.MAX_PIPES; i++) {
+                const p = pipes[i];
+                const halfH = CFG.PIPE_GAP / 2;
+                
+                DUMMY.position.set(p.x, p.gapY + halfH + 10, 0); DUMMY.scale.set(1, 20, 1); DUMMY.updateMatrix();
+                shafts.setMatrixAt(i*2, DUMMY.matrix);
+                DUMMY.position.set(p.x, p.gapY + halfH + 0.2, 0); DUMMY.scale.set(1, 1, 1); DUMMY.updateMatrix();
+                caps.setMatrixAt(i*2, DUMMY.matrix);
+
+                DUMMY.position.set(p.x, p.gapY - halfH - 10, 0); DUMMY.scale.set(1, 20, 1); DUMMY.updateMatrix();
+                shafts.setMatrixAt(i*2+1, DUMMY.matrix);
+                DUMMY.position.set(p.x, p.gapY - halfH - 0.2, 0); DUMMY.scale.set(1, 1, 1); DUMMY.updateMatrix();
+                caps.setMatrixAt(i*2+1, DUMMY.matrix);
+            }
+            shafts.instanceMatrix.needsUpdate = caps.instanceMatrix.needsUpdate = true;
+
+            for (let i = 0; i < CFG.CLOUD_COUNT; i++) {
+                const c = cloudsData[i];
+                DUMMY.position.set(c.x, c.y, c.z); DUMMY.scale.set(c.s, c.s * 0.6, c.s); DUMMY.updateMatrix();
+                clouds.setMatrixAt(i, DUMMY.matrix);
+            }
+            clouds.instanceMatrix.needsUpdate = true;
+
+            renderer.render(scene, camera);
+        }
+
+        // Global IO Observers
+        window.addEventListener('pointerdown', handleInput, { passive: false });
+        window.addEventListener('keydown', handleInput, { passive: false });
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }, { passive: true });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
