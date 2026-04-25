@@ -3,42 +3,374 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eve Public Outputs - Project Gallery</title>
+    <title>Eve Public Outputs - Development Gallery</title>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 60px auto; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
-        .container { background: white; border-radius: 16px; padding: 40px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
-        h1 { color: #333; margin-bottom: 10px; }
-        .subtitle { color: #666; margin-bottom: 30px; }
-        .project-grid { display: grid; gap: 20px; }
-        .project-card { border: 2px solid #e0e0e0; border-radius: 12px; padding: 24px; transition: all 0.3s ease; }
-        .project-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); border-color: #667eea; }
-        .project-card h2 { margin: 0 0 10px 0; color: #333; }
-        .project-card p { color: #666; line-height: 1.6; }
-        .play-btn { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 15px; transition: transform 0.2s; }
-        .play-btn:hover { transform: scale(1.05); }
-        .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-left: 10px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 0;
+        }
+        
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.95) 0%, rgba(118, 75, 162, 0.95) 100%);
+            padding: 60px 20px;
+            text-align: center;
+            color: white;
+        }
+        .hero h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        .hero p {
+            font-size: 20px;
+            opacity: 0.95;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        /* Navigation Tabs */
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .nav-tab {
+            padding: 12px 28px;
+            border-radius: 25px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .nav-tab:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+        }
+        .nav-tab.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        /* Main Container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        /* Section Headers */
+        .section-header {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .section-header h2 {
+            color: #667eea;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        .section-header p {
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        /* Grid Layout */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 24px;
+            margin-bottom: 50px;
+        }
+        
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 28px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border-left: 5px solid #667eea;
+        }
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 12px 35px rgba(0,0,0,0.2);
+        }
+        .card h3 {
+            color: #1a1a2e;
+            font-size: 22px;
+            margin-bottom: 12px;
+        }
+        .card p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .card .meta {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            color: #888;
+            font-size: 13px;
+        }
+        .card .badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-left: 8px;
+        }
         .badge-dt { background: #ff6b6b; color: white; }
         .badge-glm { background: #4ecdc4; color: white; }
+        .badge-research { background: #9b59b6; color: white; }
+        
+        .play-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 32px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 18px;
+            transition: all 0.2s;
+        }
+        .play-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+        }
+        
+        /* Category Sections */
+        .category-section {
+            margin-bottom: 50px;
+        }
+        
+        /* Footer */
+        .footer {
+            background: white;
+            padding: 40px;
+            text-align: center;
+            color: #666;
+            border-radius: 16px 16px 0 0;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 32px; }
+            .grid { grid-template-columns: 1fr; }
+            .nav-tabs { flex-wrap: wrap; }
+        }
     </style>
 </head>
 <body>
+    <!-- Hero Section -->
+    <div class="hero">
+        <h1>🎮 Eve Development Gallery</h1>
+        <p>All iterations, experiments, and research outputs from the Centaur Architecture</p>
+    </div>
+    
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs">
+        <a href="#games" class="nav-tab active">🎮 Games</a>
+        <a href="#research" class="nav-tab">📊 Research</a>
+        <a href="#visualizations" class="nav-tab">📈 Visualizations</a>
+    </div>
+    
+    <!-- Main Container -->
     <div class="container">
-        <h1>🎮 Eve Public Outputs</h1>
-        <p class="subtitle">Project Gallery - Games, Research & More</p>
         
-        <div class="project-grid">
-            <div class="project-card">
-                <h2>Flappy Bird 3D (Deep Think) <span class="badge badge-dt">System 2</span></h2>
-                <p>Gemini Deep Think's System 2 reasoning output. Took ~14 minutes via browser automation with account rotation. Features angled isometric perspective, yellow bird character, green pipes, glassmorphism UI, and LocalStorage persistence.</p>
-                <a href="flappy-bird-deep-think-clean.html" class="play-btn">▶️ Play Now</a>
+        <!-- Games Section -->
+        <div id="games" class="category-section">
+            <div class="section-header">
+                <h2>🎮 Flappy Bird 3D - All Versions</h2>
+                <p>Compare System 2 (Deep Think) vs Local LLM (GLM 5.1) code generation quality. Every iteration preserved for analysis.</p>
             </div>
             
-            <div class="project-card">
-                <h2>Flappy Bird 3D (GLM 5.1) <span class="badge badge-glm">Local LLM</span></h2>
-                <p>Direct code generation from GLM 5.1 744B model. Completed in ~38 minutes with clean architecture under 400 lines. Features 30° angled camera view, animated bird with wing flapping, scrolling pipes, shadows, and mobile-optimized controls.</p>
-                <a href="flappy-bird-glm.html" class="play-btn">▶️ Play Now</a>
+            <div class="grid">
+                <!-- Deep Think Original -->
+                <div class="card" style="border-left-color: #ff6b6b;">
+                    <h3>Deep Think Original <span class="badge badge-dt">System 2</span></h3>
+                    <p><strong>Time:</strong> ~14 minutes via Gemini Deep Think</p>
+                    <p>Angled isometric perspective (~30°), yellow bird with sphere body + wing planes, green pipes with darker caps, glassmorphism UI panels.</p>
+                    <div class="meta">💾 Saved from desktop backup - clean HTML output</div>
+                    <a href="docs/flappy-bird-deep-think-original.html" class="play-btn">▶️ Play Now</a>
+                </div>
+                
+                <!-- Deep Think V2 -->
+                <div class="card" style="border-left-color: #ff6b6b;">
+                    <h3>Deep Think V2 <span class="badge badge-dt">System 2</span></h3>
+                    <p><strong>Time:</strong> ~9 minutes (account u/1 after rate limit rotation)</p>
+                    <p>3D isometric camera, Three.js r128, yellow bird with animated wings, green cylinder pipes with caps, parallax clouds & bushes.</p>
+                    <div class="meta">✅ Extracted from .txt workflow</div>
+                    <a href="docs/flappy-bird-deep-think-v2.html" class="play-btn">▶️ Play Now</a>
+                </div>
+                
+                <!-- GLM V1 -->
+                <div class="card" style="border-left-color: #4ecdc4;">
+                    <h3>GLM 5.1 V1 <span class="badge badge-glm">Local LLM</span></h3>
+                    <p><strong>Time:</strong> ~38 minutes direct generation</p>
+                    <p>Camera at (6,9,18), yellow bird with animated wing flapping, scrolling pipes, glassmorphism UI, Pointer Events for mobile.</p>
+                    <div class="meta">🚀 Fast local generation - production-ready</div>
+                    <a href="docs/flappy-bird-glm.html" class="play-btn">▶️ Play Now</a>
+                </div>
+                
+                <!-- GLM V2 -->
+                <div class="card" style="border-left-color: #4ecdc4;">
+                    <h3>GLM 5.1 V2 <span class="badge badge-glm">Local LLM</span></h3>
+                    <p><strong>Time:</strong> ~8 minutes direct generation</p>
+                    <p>Camera at (-2,6,12), InstancedMesh pipes (20 pairs), sky gradient canvas texture, drifting clouds, PCFSoft shadows.</p>
+                    <div class="meta">🔄 Same prompt as V1 - shows variation</div>
+                    <a href="docs/flappy-bird-glm-v2.html" class="play-btn">▶️ Play Now</a>
+                </div>
+                
+                <!-- GLM V1 Hardened -->
+                <div class="card" style="border-left-color: #e74c3c; background: #fff5f5;">
+                    <h3>GLM V1 HARDENED <span class="badge badge-dt">🔥 CRITICAL FIXES</span></h3>
+                    <p><strong>Time:</strong> ~16 minutes via Deep Think Enhancement</p>
+                    <p><strong>Bugs Fixed:</strong> Inverted collision, empty array crash, state machine lockup, GPU memory leak, localStorage NaN poisoning.</p>
+                    <div class="meta">✅ PROOF System 2 catches critical bugs!</div>
+                    <a href="docs/flappy-bird-hardened.html" class="play-btn" style="background:linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">▶️ Play Hardened</a>
+                </div>
+                
+                <!-- GLM V2 Hardened -->
+                <div class="card" style="border-left-color: #2ecc71; background: #f0fff4;">
+                    <h3>GLM V2 HARDENED <span class="badge badge-dt">🔥 GAME FEEL</span></h3>
+                    <p><strong>Time:</strong> ~14 minutes via Deep Think Enhancement</p>
+                    <p><strong>Fixed:</strong> Frame-rate dependency, rage-tap corruption, inaccurate hitboxes, O(N) matrix overhead, z-fighting artifacts.</p>
+                    <div class="meta">✅ Game feel + performance upgrades!</div>
+                    <a href="docs/flappy-bird-glm-v2-hardened.html" class="play-btn" style="background:linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);">▶️ Play Enhanced</a>
+                </div>
+                
+                <!-- V10 Hardened -->
+                <div class="card" style="border-left-color: #9b59b6; background: #f4ecf7;">
+                    <h3>V10 HARDENED <span class="badge badge-dt">🔥 APPLE-GRADE</span></h3>
+                    <p><strong>Time:</strong> ~3.5 minutes via DEEPTHINK-QA-HARNESS_V10.md</p>
+                    <p><strong>8 Critical Fixes:</strong> iOS private browsing crash, tab backgrounding physics explosion, float precision drift, notch clipping.</p>
+                    <div class="meta">✅ CANON V10 HARNESS - 10,000-QA swarm!</div>
+                    <a href="docs/flappy-bird-glm-v2-v10-hardened.html" class="play-btn" style="background:linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);">▶️ Play V10</a>
+                </div>
+                
+                <!-- 3D Mario -->
+                <div class="card" style="border-left-color: #f39c12; background: #fef5e7;">
+                    <h3>3D MARIO STYLE <span class="badge badge-dt">🍄 AESTHETIC</span></h3>
+                    <p><strong>Time:</strong> ~12 minutes via Deep Think - ZERO technical constraints!</p>
+                    <p>Vibrant cartoon materials, whimsical world design, polished mobile presentation, clear visual hierarchy.</p>
+                    <div class="meta">✅ PURE CREATIVE FREEDOM!</div>
+                    <a href="docs/flappy-bird-3d-mario.html" class="play-btn" style="background:linear-gradient(135deg, #f39c12 0%, #e67e22 100%);">▶️ Play Mario</a>
+                </div>
             </div>
         </div>
+        
+        <!-- Research Section -->
+        <div id="research" class="category-section">
+            <div class="section-header">
+                <h2>📊 Research Reports & Analysis</h2>
+                <p>Comprehensive research outputs generated via AI Mode sequential queries and System 2 reasoning.</p>
+            </div>
+            
+            <div class="grid">
+                <!-- Iran War Research -->
+                <div class="card" style="border-left-color: #e74c3c;">
+                    <h3>Iran-Israel Conflict Analysis <span class="badge badge-research">COMPREHENSIVE</span></h3>
+                    <p><strong>Generated:</strong> April 2026 via sequential AI Mode queries (20+ research topics)</p>
+                    <p>Coverage: Military capabilities, regional proxies, nuclear program timeline, economic sanctions impact, diplomatic efforts.</p>
+                    <div class="meta">📄 Full markdown report with citations</div>
+                    <a href="research/iran-war-research.html" class="play-btn">📖 Read Report</a>
+                </div>
+                
+                <!-- AI Developments -->
+                <div class="card" style="border-left-color: #3498db;">
+                    <h3>AI Landscape April 2026 <span class="badge badge-research">INDUSTRY ANALYSIS</span></h3>
+                    <p><strong>Generated:</strong> System 2 analysis of frontier AI developments</p>
+                    <p>Coverage: Model capabilities (Gemini Deep Think, Claude Opus), enterprise adoption rates, infrastructure build-out.</p>
+                    <div class="meta">📊 Market trends + technical benchmarks</div>
+                    <a href="research/ai-developments.html" class="play-btn">📖 Read Report</a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Visualizations Section -->
+        <div id="visualizations" class="category-section">
+            <div class="section-header">
+                <h2>📈 Data Visualizations</h2>
+                <p>Interactive charts and visual analyses generated from research data.</p>
+            </div>
+            
+            <div class="grid">
+                <!-- TPU Supply Chain -->
+                <div class="card" style="border-left-color: #9b59b6; background: #f4ecf7;">
+                    <h3>Google TPU v8 Supply Chain <span class="badge badge-research">INTERACTIVE CHART</span></h3>
+                    <p><strong>Generated:</strong> April 25, 2026 - Complete breakdown of WHO manufactures Google's TPU v8 AI chips.</p>
+                    <ul style="color:#666;line-height:1.8;margin:8px 0 12px 20px;">
+                        <li>🏭 <strong>TSMC - 60%</strong> - Exclusive foundry partner, 2nm process</li>
+                        <li>🔧 <strong>Broadcom - 20%</strong> - TPU 8t design (agreement through 2031!)</li>
+                        <li>📱 <strong>MediaTek - 15%</strong> - TPU 8i inference chip design</li>
+                        <li>💼 <strong>Intel - 5%</strong> - Advanced packaging support</li>
+                    </ul>
+                    <div class="meta">✅ Interactive pie chart + key constraints analysis!</div>
+                    <a href="tpu-supply-chain.html" class="play-btn" style="background:linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);">📊 View Chart</a>
+                </div>
+            </div>
+        </div>
+        
     </div>
+    
+    <!-- Footer -->
+    <div class="footer">
+        <p><strong>Eve Public Outputs Gallery</strong></p>
+        <p style="margin-top: 10px; font-size: 13px;">All content generated by Eve Centaur Architecture - Running locally on Mac Studio M3 Ultra cluster with zero cloud dependency.</p>
+        <p style="margin-top: 8px; font-size: 12px; color: #999;">GitHub: <a href="https://github.com/eve-ai-assistant/eve-public-outputs" style="color:#667eea;">eve-ai-assistant/eve-public-outputs</a></p>
+    </div>
+    
+    <!-- Smooth Scroll Script -->
+    <script>
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+        
+        // Update active tab on scroll
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('.category-section');
+            const navTabs = document.querySelectorAll('.nav-tab');
+            
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (window.pageYOffset >= sectionTop - 100) {
+                    current = section.getAttribute('id');
+                }
+            });
+            
+            navTabs.forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.getAttribute('href') === '#' + current) {
+                    tab.classList.add('active');
+                }
+            });
+        });
+    </script>
 </body>
 </html>
